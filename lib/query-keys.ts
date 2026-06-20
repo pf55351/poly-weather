@@ -3,9 +3,10 @@ export const queryKeys = {
   oracle: (cityId: string, date: string) => ["oracle", cityId, date] as const,
 };
 
-/** Data odierna in formato YYYY-MM-DD (UTC), usata come chiave/parametro. */
+/** Data odierna in formato YYYY-MM-DD nel fuso LOCALE (non UTC, che dopo mezzanotte
+ *  in Italia darebbe ancora il giorno prima). en-CA produce già "YYYY-MM-DD". */
 export function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  return new Date().toLocaleDateString("en-CA");
 }
 
 /** ISO (YYYY-MM-DD) spostato di n giorni rispetto a baseISO. */

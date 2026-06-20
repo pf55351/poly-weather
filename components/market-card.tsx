@@ -7,7 +7,7 @@ import { MarketInfoDialog } from "./market-info-dialog";
 import { EdgeBadge } from "./edge-badge";
 import { polymarketBucketUrl, type TempBucket, type TempMarketEvent } from "@/lib/polymarket";
 import type { City } from "@/lib/cities";
-import { pct, usd, edgePoints } from "@/lib/format";
+import { pct, usd, edgePoints, isAligned } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export function MarketCard({
@@ -28,10 +28,19 @@ export function MarketCard({
   const marketProb = livePrice ?? bucket.yesPrice;
   const change = bucket.oneDayPriceChange ?? 0;
   const edge = oracleProb !== null ? edgePoints(oracleProb, marketProb) : null;
+  // Edge "di valore": oracolo più fiducioso del mercato (positivo e non trascurabile).
+  const hasValueEdge = edge !== null && edge > 0 && !isAligned(edge);
   const orderUrl = polymarketBucketUrl(event.slug, bucket.slug);
 
   return (
-    <Card className="relative p-4 gap-3 transition-all hover:border-primary/40 hover:glow-primary">
+    <Card
+      className={cn(
+        "relative p-4 gap-3 transition-all",
+        hasValueEdge
+          ? "border-emerald-500/70 ring-1 ring-emerald-500/40 shadow-[0_8px_30px_-12px] shadow-emerald-500/40"
+          : "hover:border-primary/40 hover:glow-primary",
+      )}
+    >
       {/* L'intera card porta alla pagina d'ordine del mercato su Polymarket */}
       <a
         href={orderUrl}
