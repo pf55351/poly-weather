@@ -1,73 +1,47 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQueries } from "@tanstack/react-query";
-import { Search, X, ThermometerSun, Info, ChevronDown } from "lucide-react";
+import { Search, X, ThermometerSun, Info, ChevronDown, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CityListItem } from "@/components/city-list-item";
 import { DayTabs } from "@/components/day-tabs";
-import { useCities } from "@/hooks/use-cities";
+import { useBoard } from "@/hooks/use-board";
 import { useSelectedDate } from "@/hooks/use-selected-date";
-import { fetchSummary, summaryQueryKey } from "@/hooks/use-summary";
-import { edgePoints } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { CitySummary } from "@/app/api/summary/route";
 
-type SortMode = "suggested" | "edge";
-
-/** edge = oracle − market quando puntano allo stesso bucket, altrimenti null. */
-function summaryEdge(s: CitySummary | undefined): number | null {
-  const m = s?.marketWinner;
-  const o = s?.oracleWinner;
-  if (m && o && m.label === o.label) return edgePoints(o.prob, m.prob);
-  return null;
-}
+type SortMode = "edge" | "suggested";
 
 export default function Home() {
   const date = useSelectedDate();
-  const { data, isLoading } = useCities(date);
-  const allCities = useMemo(() => data?.cities ?? [], [data]);
+  const board = useBoard(date);
+  const allRows = useMemo(() => board.data?.cities ?? [], [board.data]);
 
   const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<SortMode>("suggested");
+  const [sort, setSort] = useState<SortMode>("edge"); // edge di default
   const sortByEdge = sort === "edge";
-
-  // Per ordinare per edge servono i summary di TUTTE le città: li carichiamo solo
-  // quando l'ordinamento "Edge" è attivo (stessa queryKey dei card → nessun doppio fetch).
-  const summaryResults = useQueries({
-    queries: allCities.map((c) => ({
-      queryKey: summaryQueryKey(c.cityId, date),
-      queryFn: () => fetchSummary(c.cityId, date),
-      enabled: sortByEdge,
-      staleTime: 60_000,
-      refetchInterval: 5 * 60_000,
-    })),
-  });
-
-  const edgeByCity = new Map<string, number | null>();
-  allCities.forEach((c, i) => edgeByCity.set(c.cityId, summaryEdge(summaryResults[i]?.data)));
-  const edgeLoading = sortByEdge && summaryResults.some((r) => r.isLoading);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return allCities;
-    return allCities.filter(
+    if (!q) return allRows;
+    return allRows.filter(
       (c) => c.label.toLowerCase().includes(q) || c.marketName.toLowerCase().includes(q),
     );
-  }, [allCities, query]);
+  }, [allRows, query]);
 
-  // Ordinamento: per edge (decrescente, città con edge prima), o ordine consigliato.
+  // Edge: decrescente, città con edge prima, null (divergenza / no market) in coda.
   const cities = sortByEdge
     ? [...filtered].sort((a, b) => {
-        const ea = edgeByCity.get(a.cityId);
-        const eb = edgeByCity.get(b.cityId);
-        if (ea == null && eb == null) return 0;
-        if (ea == null) return 1;
-        if (eb == null) return -1;
-        return eb - ea;
+        if (a.edge == null && b.edge == null) return 0;
+        if (a.edge == null) return 1;
+        if (b.edge == null) return -1;
+        return b.edge - a.edge;
       })
     : filtered;
+
+  const updatedAt = board.dataUpdatedAt
+    ? new Date(board.dataUpdatedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+    : null;
 
   return (
     <div className="flex flex-col min-h-full">
@@ -99,16 +73,33 @@ export default function Home() {
       </header>
 
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
-        <div className="flex items-end justify-between mb-4">
-          <div>
-            <h2 className="text-xl font-bold tracking-tight">Weather markets</h2>
+        <div className="flex items-center justify-between mb-4 gap-3">
+          <h2 className="text-xl font-bold tracking-tight">Weather markets</h2>
+          <div className="flex items-center gap-2">
+            {board.data ? (
+              <Badge variant="secondary" className="tabular-nums">
+                {cities.length}
+                {query ? `/${allRows.length}` : ""} cities
+              </Badge>
+            ) : null}
+            {updatedAt ? (
+              <span
+                suppressHydrationWarning
+                className="text-xs text-muted-foreground tabular-nums hidden sm:inline"
+              >
+                Updated {updatedAt}
+              </span>
+            ) : null}
+            <button
+              onClick={() => board.refetch()}
+              disabled={board.isFetching}
+              aria-label="Refresh"
+              title="Refresh now"
+              className="grid place-items-center h-8 w-8 rounded-lg border border-border/60 bg-card/50 text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors disabled:opacity-60"
+            >
+              <RefreshCw className={cn("h-4 w-4", board.isFetching && "animate-spin")} />
+            </button>
           </div>
-          {data ? (
-            <Badge variant="secondary" className="tabular-nums">
-              {cities.length}
-              {query ? `/${allCities.length}` : ""} cities
-            </Badge>
-          ) : null}
         </div>
 
         <DayTabs className="mb-4" />
@@ -158,26 +149,22 @@ export default function Home() {
             ) : null}
           </div>
           <div className="inline-flex rounded-xl border border-border/60 bg-card/50 p-1 shrink-0">
-            <SortButton active={sort === "suggested"} onClick={() => setSort("suggested")}>
-              Suggested
-            </SortButton>
             <SortButton active={sortByEdge} onClick={() => setSort("edge")}>
               Edge
+            </SortButton>
+            <SortButton active={sort === "suggested"} onClick={() => setSort("suggested")}>
+              Suggested
             </SortButton>
           </div>
         </div>
 
-        {edgeLoading ? (
-          <p className="mb-3 text-xs text-muted-foreground">Loading forecasts to rank by edge…</p>
-        ) : null}
-
         <div className="flex flex-col gap-3">
-          {isLoading
+          {board.isLoading
             ? Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-26 rounded-xl" />)
-            : cities.map((c) => <CityListItem key={c.cityId} card={c} date={date} />)}
+            : cities.map((c) => <CityListItem key={c.cityId} row={c} />)}
         </div>
 
-        {data && cities.length === 0 ? (
+        {board.data && cities.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-10">
             {query ? `No cities found for “${query}”.` : "No open temperature markets found for today."}
           </p>

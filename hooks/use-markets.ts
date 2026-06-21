@@ -9,6 +9,7 @@ export interface MarketCityInfo {
   label: string;
   station: string;
   unit: "C" | "F";
+  timezone: string;
 }
 
 export interface MarketsResponse {

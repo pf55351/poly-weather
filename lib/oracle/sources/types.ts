@@ -15,6 +15,8 @@ export interface SourceContext {
 export interface WeatherSource {
   id: string;
   label: string;
+  /** Peso nella distribuzione (default 1). Wunderground = fonte di risoluzione → peso alto. */
+  weight?: number;
   /** true se la fonte è utilizzabile (es. chiave presente). */
   enabled(): boolean;
   /** Ritorna le temperature massime previste (°C). Può restituirne molte (ensemble). */

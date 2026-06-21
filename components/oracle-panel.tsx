@@ -22,7 +22,7 @@ export function OraclePanel({
   oracle: OracleResult;
   marketBuckets?: TempBucket[];
 }) {
-  const { distribution: dist, sources, sourceCount } = oracle;
+  const { distribution: dist, sources, sourceCount, sampleCount } = oracle;
   const ml = dist.mostLikely;
 
   const marketByLabel = new Map<string, number>();
@@ -46,13 +46,18 @@ export function OraclePanel({
         </div>
         <Tooltip>
           <TooltipTrigger render={<Badge variant="secondary" className="cursor-default" />}>
-            {sourceCount} sources · {dist.sampleCount} estimates
+            {sourceCount} sources · {sampleCount} estimates
           </TooltipTrigger>
           <TooltipContent className="max-w-xs">
             <ul className="space-y-1 text-xs">
               {sources.map((s) => (
                 <li key={s.id} className="flex justify-between gap-3">
-                  <span className={s.ok ? "" : "text-red-400 line-through"}>{s.label}</span>
+                  <span className={s.ok ? "" : "text-red-400 line-through"}>
+                    {s.label}
+                    {s.weight > 1 ? (
+                      <span className="text-primary font-medium"> ·{s.weight}×</span>
+                    ) : null}
+                  </span>
                   <span className="tabular-nums">
                     {s.ok ? `${s.memberCount}× · ${temp(s.meanC, "C", 1)}` : "ko"}
                   </span>

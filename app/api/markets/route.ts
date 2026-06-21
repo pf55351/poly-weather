@@ -15,7 +15,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: `città non risolta: ${cityId}` }, { status: 400 });
   }
 
-  const cityInfo = { id: city.id, label: city.label, station: city.station, unit: city.unit };
+  const cityInfo = {
+    id: city.id,
+    label: city.label,
+    station: city.station,
+    unit: city.unit,
+    timezone: city.timezone,
+  };
 
   try {
     const event = await fetchTempEvent(city, date);

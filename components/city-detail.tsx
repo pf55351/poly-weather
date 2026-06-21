@@ -3,14 +3,16 @@
 import { useEffect, useMemo } from "react";
 import { useSetAtom } from "jotai";
 import Link from "next/link";
-import { ArrowLeft, CloudOff } from "lucide-react";
+import { ArrowLeft, CloudOff, RefreshCw } from "lucide-react";
 import { liveStreamingAtom } from "@/lib/atoms";
+import { cn } from "@/lib/utils";
 import { useMarkets } from "@/hooks/use-markets";
 import { useOracle } from "@/hooks/use-oracle";
 import { useMarketStream } from "@/hooks/use-market-stream";
 import { useSelectedDate } from "@/hooks/use-selected-date";
 import { ConnectionStatus } from "@/components/connection-status";
 import { DayTabs } from "@/components/day-tabs";
+import { Clock } from "@/components/clock";
 import { MarketCard } from "@/components/market-card";
 import { OraclePanel } from "@/components/oracle-panel";
 import { Card } from "@/components/ui/card";
@@ -67,6 +69,16 @@ export function CityDetail({ cityId }: { cityId: string }) {
 
   const noMarket = markets.data && !markets.data.hasMarket;
 
+  // Refresh manuale del mercato (e oracolo) di questa città.
+  const isRefreshing = markets.isFetching || oracle.isFetching;
+  const refresh = () => {
+    markets.refetch();
+    oracle.refetch();
+  };
+  const updatedAt = markets.dataUpdatedAt
+    ? new Date(markets.dataUpdatedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+    : null;
+
   return (
     <div className="flex flex-col min-h-full">
       <header className="sticky top-0 z-20 border-b border-border/60 glass">
@@ -81,7 +93,25 @@ export function CityDetail({ cityId }: { cityId: string }) {
           {station ? (
             <span className="text-xs text-muted-foreground hidden sm:inline">· {station}</span>
           ) : null}
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2.5">
+            <Clock timeZone={cityInfo?.timezone} className="text-xs text-muted-foreground" />
+            {updatedAt ? (
+              <span
+                suppressHydrationWarning
+                className="text-xs text-muted-foreground tabular-nums hidden sm:inline"
+              >
+                Updated {updatedAt}
+              </span>
+            ) : null}
+            <button
+              onClick={refresh}
+              disabled={isRefreshing}
+              aria-label="Refresh market"
+              title="Refresh market"
+              className="grid place-items-center h-8 w-8 rounded-lg border border-border/60 bg-card/50 text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors disabled:opacity-60"
+            >
+              <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
+            </button>
             <ConnectionStatus />
           </div>
         </div>

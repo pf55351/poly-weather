@@ -47,7 +47,11 @@ export function MarketInfoDialog({
         <div className="flex-1 overflow-y-auto p-5 space-y-3">
           <div className="rounded-xl border border-border/60 bg-card/50 divide-y divide-border/50">
             <Row label="Resolution station" value={city.station} />
-            <Row label="Resolution source" value={event.resolutionSource ?? "Polymarket / UMA"} />
+            <Row
+              label="Resolution source"
+              value="Wunderground"
+              href={event.resolutionSource ?? "https://www.wunderground.com/"}
+            />
             <Row
               label="Closes"
               value={event.endDate ? new Date(event.endDate).toLocaleString("en-US") : "—"}
@@ -92,16 +96,51 @@ export function MarketInfoDialog({
   );
 }
 
-function Row({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function hostLabel(url: string): string {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, "");
+    if (host.includes("wunderground")) return "Wunderground";
+    if (host.includes("polymarket")) return "Polymarket";
+    return host;
+  } catch {
+    return url;
+  }
+}
+
+function Row({
+  label,
+  value,
+  accent,
+  href,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+  href?: string;
+}) {
+  const isLink = !!href && /^https?:\/\//i.test(href);
   return (
     <div className="flex items-center justify-between gap-4 px-3 py-2">
       <dt className="text-muted-foreground shrink-0 text-xs">{label}</dt>
-      <dd
-        className={`min-w-0 truncate text-right text-sm tabular-nums ${accent ? "text-primary font-semibold" : ""}`}
-        title={value}
-      >
-        {value}
-      </dd>
+      {isLink ? (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="min-w-0 inline-flex items-center justify-end gap-1 text-right text-sm text-primary hover:underline"
+          title={href}
+        >
+          <span className="truncate">{hostLabel(href!)}</span>
+          <ExternalLink className="h-3 w-3 shrink-0" />
+        </a>
+      ) : (
+        <dd
+          className={`min-w-0 truncate text-right text-sm tabular-nums ${accent ? "text-primary font-semibold" : ""}`}
+          title={value}
+        >
+          {value}
+        </dd>
+      )}
     </div>
   );
 }

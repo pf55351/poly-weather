@@ -51,7 +51,7 @@ export function MarketCard({
       />
 
       <div className="relative z-10 flex items-start justify-between gap-2 pointer-events-none">
-        <span className="font-medium leading-tight">{bucket.label}</span>
+        <span className="text-lg font-bold leading-tight">{bucket.label}</span>
         <div className="flex items-center gap-1.5 shrink-0 pointer-events-auto">
           {isLive && livePrice !== null ? (
             <Tooltip>
