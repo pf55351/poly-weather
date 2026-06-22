@@ -3,44 +3,42 @@
 import { TrendingDown, TrendingUp, Radio, ExternalLink } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { MarketInfoDialog } from "./market-info-dialog";
 import { EdgeBadge } from "./edge-badge";
 import { polymarketBucketUrl, type TempBucket, type TempMarketEvent } from "@/lib/polymarket";
-import type { City } from "@/lib/cities";
-import { pct, usd, edgePoints, isAligned } from "@/lib/format";
+import { pct, usd, edgePoints } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export function MarketCard({
   event,
   bucket,
-  city,
   oracleProb,
   livePrice,
   isLive,
+  isMatch = false,
 }: {
   event: TempMarketEvent;
   bucket: TempBucket;
-  city: City;
   oracleProb: number | null;
   livePrice: number | null;
   isLive: boolean;
+  /** true se su QUESTO bucket oracolo e mercato corrispondono (entrambi il più probabile) */
+  isMatch?: boolean;
 }) {
   const marketProb = livePrice ?? bucket.yesPrice;
   const change = bucket.oneDayPriceChange ?? 0;
   const edge = oracleProb !== null ? edgePoints(oracleProb, marketProb) : null;
-  // Edge "di valore": oracolo più fiducioso del mercato (positivo e non trascurabile).
-  const hasValueEdge = edge !== null && edge > 0 && !isAligned(edge);
   const orderUrl = polymarketBucketUrl(event.slug, bucket.slug);
 
+  // Bordo verde MARCATO solo quando oracolo e mercato corrispondono; lampeggia se edge positivo.
+  const pulse = isMatch && edge !== null && edge > 0;
+  const cardCls = pulse
+    ? "border-2 border-emerald-500 pulse-edge"
+    : isMatch
+      ? "border-2 border-emerald-500 ring-2 ring-emerald-500/30 shadow-[0_8px_30px_-10px] shadow-emerald-500/50"
+      : "hover:border-primary/40 hover:glow-primary";
+
   return (
-    <Card
-      className={cn(
-        "relative p-4 gap-3 transition-all",
-        hasValueEdge
-          ? "border-emerald-500/70 ring-1 ring-emerald-500/40 shadow-[0_8px_30px_-12px] shadow-emerald-500/40"
-          : "hover:border-primary/40 hover:glow-primary",
-      )}
-    >
+    <Card className={cn("relative p-4 gap-3 transition-all", cardCls)}>
       {/* L'intera card porta alla pagina d'ordine del mercato su Polymarket */}
       <a
         href={orderUrl}
@@ -52,8 +50,8 @@ export function MarketCard({
 
       <div className="relative z-10 flex items-start justify-between gap-2 pointer-events-none">
         <span className="text-lg font-bold leading-tight">{bucket.label}</span>
-        <div className="flex items-center gap-1.5 shrink-0 pointer-events-auto">
-          {isLive && livePrice !== null ? (
+        {isLive && livePrice !== null ? (
+          <div className="shrink-0 pointer-events-auto">
             <Tooltip>
               <TooltipTrigger
                 render={<span className="grid place-items-center cursor-help" />}
@@ -63,9 +61,8 @@ export function MarketCard({
               </TooltipTrigger>
               <TooltipContent>Live price via WebSocket (Polymarket orderbook)</TooltipContent>
             </Tooltip>
-          ) : null}
-          <MarketInfoDialog event={event} bucket={bucket} city={city} />
-        </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="relative z-10 flex items-end justify-between pointer-events-none">

@@ -6,45 +6,40 @@ import { isAligned, signedPoints } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /**
- * Mostra l'edge (oracolo - mercato) in punti percentuali.
- * Verde = l'oracolo dà più probabilità del mercato (potenziale "value" sul Yes).
- * Check verde = oracolo e mercato combaciano (edge trascurabile).
+ * Edge (oracolo − mercato) in punti percentuali, con scala colori chiara:
+ *  - ≈0 (allineati): neutro/grigio (nessun edge significativo)
+ *  - positivo: verde (oracolo più fiducioso → possibile value sul «Yes»), più intenso se forte
+ *  - negativo: ambra se lieve, rosso se forte (mercato più fiducioso → «Yes» caro)
  */
 export function EdgeBadge({ points, className }: { points: number; className?: string }) {
-  if (isAligned(points)) {
-    return (
-      <Badge
-        variant="outline"
-        className={cn(
-          "gap-1 tabular-nums font-medium border-emerald-500 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
-          className,
-        )}
-        title="Oracle and market aligned: no significant edge"
-      >
-        <Check className="h-3 w-3" />
-        {signedPoints(points)}
-      </Badge>
-    );
+  const aligned = isAligned(points);
+  const positive = points > 0;
+  const strong = Math.abs(points) >= 10;
+
+  let cls: string;
+  let title: string;
+  if (aligned) {
+    cls = "border-border bg-muted/50 text-muted-foreground";
+    title = "Oracle and market aligned: negligible edge";
+  } else if (positive) {
+    cls = strong
+      ? "border-emerald-500 bg-emerald-500/20 text-emerald-300"
+      : "border-emerald-500/40 bg-emerald-500/10 text-emerald-400";
+    title = "Oracle more confident than the market → possible value on «Yes»";
+  } else {
+    cls = strong
+      ? "border-red-500 bg-red-500/20 text-red-300"
+      : "border-amber-500/50 bg-amber-500/10 text-amber-400";
+    title = "Oracle less confident than the market → «Yes» potentially overpriced";
   }
 
-  const strong = Math.abs(points) >= 15;
-  const positive = points > 0;
   return (
     <Badge
       variant="outline"
-      className={cn(
-        "tabular-nums font-medium",
-        positive
-          ? strong
-            ? "border-emerald-500 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-            : "border-emerald-500/40 text-emerald-600 dark:text-emerald-400"
-          : strong
-            ? "border-red-500 bg-red-500/15 text-red-600 dark:text-red-400"
-            : "border-red-500/40 text-red-600 dark:text-red-400",
-        className,
-      )}
-      title="Edge = oracle probability − market implied probability"
+      className={cn("gap-1 tabular-nums font-semibold", cls, className)}
+      title={title}
     >
+      {aligned ? <Check className="h-3 w-3" /> : null}
       {signedPoints(points)}
     </Badge>
   );

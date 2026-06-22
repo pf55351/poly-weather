@@ -3,8 +3,7 @@
 import { useMemo, useState } from "react";
 import { Search, X, ThermometerSun, Info, ChevronDown, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { CityListItem } from "@/components/city-list-item";
+import { CityListItem, CityListItemSkeleton } from "@/components/city-list-item";
 import { DayTabs } from "@/components/day-tabs";
 import { useBoard } from "@/hooks/use-board";
 import { useSelectedDate } from "@/hooks/use-selected-date";
@@ -40,7 +39,14 @@ export default function Home() {
     : filtered;
 
   const updatedAt = board.dataUpdatedAt
-    ? new Date(board.dataUpdatedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+    ? new Date(board.dataUpdatedAt).toLocaleString("en-GB", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      })
     : null;
 
   return (
@@ -160,7 +166,7 @@ export default function Home() {
 
         <div className="flex flex-col gap-3">
           {board.isLoading
-            ? Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-26 rounded-xl" />)
+            ? Array.from({ length: 8 }).map((_, i) => <CityListItemSkeleton key={i} />)
             : cities.map((c) => <CityListItem key={c.cityId} row={c} />)}
         </div>
 

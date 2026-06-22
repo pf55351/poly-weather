@@ -18,6 +18,8 @@ export interface BoardRow {
   timezone: string;
   isItaly: boolean;
   hasMarket: boolean;
+  /** quando il mercato chiude/risolve (ISO UTC) */
+  endDate: string | null;
   marketWinner: { label: string; prob: number } | null;
   oracleWinner: { label: string; prob: number } | null;
   /** edge = P_oracolo − P_mercato (punti %) quando i due indicano lo stesso bucket, altrimenti null */
@@ -60,6 +62,7 @@ async function computeRow(card: CityCard, dateStr: string, dateObj: Date): Promi
     timezone: "UTC",
     isItaly: card.isItaly,
     hasMarket: false,
+    endDate: null,
     marketWinner: null,
     oracleWinner: null,
     edge: null,
@@ -81,6 +84,7 @@ async function computeRow(card: CityCard, dateStr: string, dateObj: Date): Promi
   if (event && event.buckets.length) {
     const top = event.buckets.reduce((a, b) => (b.yesPrice > a.yesPrice ? b : a));
     base.hasMarket = true;
+    base.endDate = event.endDate;
     base.marketWinner = { label: top.label, prob: top.yesPrice };
   }
   const ml = oracle?.distribution.mostLikely ?? null;

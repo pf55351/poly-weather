@@ -5,7 +5,7 @@ import type { WeatherSource } from "./types";
 const URL = "https://api.met.no/weatherapi/locationforecast/2.0/compact";
 // Met.no richiede uno User-Agent con contatto (vedi ToS). Override via env se serve.
 const UA =
-  process.env.MET_NORWAY_USER_AGENT ?? "poly-bot/0.1 (https://blockchainitalia.io)";
+  process.env.MET_NORWAY_USER_AGENT ?? "polymeteo/0.1 (https://blockchainitalia.io)";
 
 interface MetTimeseries {
   time: string;

@@ -4,7 +4,8 @@ import Link from "next/link";
 import { Check, ChevronRight, Cloud, Thermometer, MapPin } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Clock } from "@/components/clock";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Countdown } from "@/components/countdown";
 import { isAligned, pct, signedPoints } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { BoardRow } from "@/app/api/board/route";
@@ -59,10 +60,7 @@ export function CityListItem({ row }: { row: BoardRow }) {
               />
             ) : null}
             <div className="ml-auto flex items-center gap-2 shrink-0">
-              <Clock
-                timeZone={row.timezone}
-                className="text-xs text-muted-foreground"
-              />
+              <Countdown endDate={row.endDate} className="text-xs" />
               <Badge variant="outline" className="text-[10px]">
                 °{row.unit}
               </Badge>
@@ -149,5 +147,26 @@ function Prediction({
         <span className="text-base text-muted-foreground">—</span>
       )}
     </div>
+  );
+}
+
+// Skeleton con la stessa forma della card mercato (mostrato durante il caricamento).
+export function CityListItemSkeleton() {
+  return (
+    <Card className="p-4 flex-row items-center gap-4 min-h-[104px] overflow-hidden">
+      <Skeleton className="h-16 w-16 rounded-xl shrink-0" />
+      <div className="flex-1 min-w-0 space-y-2.5">
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-4 w-28" />
+          <Skeleton className="h-4 w-14 ml-auto" />
+        </div>
+        <Skeleton className="h-3.5 w-3/4" />
+        <div className="flex gap-5 pt-0.5">
+          <Skeleton className="h-4 w-28" />
+          <Skeleton className="h-4 w-24" />
+        </div>
+      </div>
+      <Skeleton className="h-5 w-5 rounded shrink-0" />
+    </Card>
   );
 }

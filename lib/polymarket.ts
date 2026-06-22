@@ -103,6 +103,22 @@ interface RawMarket {
   volume?: unknown;
   liquidity?: unknown;
   closed?: boolean;
+  /** mezzanotte locale del giorno del mercato, es. "2026-06-21 16:00:00+00" */
+  gameStartTime?: string;
+}
+
+/**
+ * La chiusura reale del mercato ≈ fine della giornata LOCALE = gameStartTime + 24h
+ * (verificato: il closedTime effettivo cade a ridosso della mezzanotte locale).
+ * Il campo `endDate` di Gamma è invece un placeholder fisso (12:00 UTC per tutti).
+ */
+function computeCloseTime(gameStartTime: string | undefined): string | null {
+  if (!gameStartTime) return null;
+  // "2026-06-21 16:00:00+00" -> "2026-06-21T16:00:00+00:00"
+  const norm = gameStartTime.replace(" ", "T").replace(/([+-]\d{2})$/, "$1:00");
+  const start = new Date(norm);
+  if (Number.isNaN(start.getTime())) return null;
+  return new Date(start.getTime() + 24 * 3600 * 1000).toISOString();
 }
 
 interface RawEvent {
@@ -184,18 +200,22 @@ export async function fetchTempEvent(
 
   if (!match) return null;
 
-  const buckets = (match.markets ?? [])
+  const rawMarkets = match.markets ?? [];
+  const buckets = rawMarkets
     .filter((m) => !m.closed && m.groupItemTitle)
     .map(normalizeBucket)
     // ordina dal bucket più freddo al più caldo
     .sort((a, b) => (a.low ?? a.high ?? -999) - (b.low ?? b.high ?? -999));
+
+  // Chiusura reale = fine giornata locale (gameStartTime + 24h), non il placeholder endDate.
+  const closeTime = computeCloseTime(rawMarkets.find((m) => m.gameStartTime)?.gameStartTime);
 
   return {
     cityId: city.id,
     title: match.title ?? "",
     slug: match.slug ?? "",
     image: match.image ?? match.icon ?? null,
-    endDate: match.endDate ?? null,
+    endDate: closeTime ?? match.endDate ?? null,
     resolutionSource: match.resolutionSource ?? null,
     description: match.description ?? null,
     unit: city.unit,

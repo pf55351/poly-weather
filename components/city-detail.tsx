@@ -13,13 +13,16 @@ import { useSelectedDate } from "@/hooks/use-selected-date";
 import { ConnectionStatus } from "@/components/connection-status";
 import { DayTabs } from "@/components/day-tabs";
 import { Clock } from "@/components/clock";
+import { Countdown } from "@/components/countdown";
 import { MarketCard } from "@/components/market-card";
+import { MarketInfoDialog } from "@/components/market-info-dialog";
 import { OraclePanel } from "@/components/oracle-panel";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { pct } from "@/lib/format";
+import { pct, edgePoints } from "@/lib/format";
 import type { City } from "@/lib/cities";
+import type { TempMarketEvent } from "@/lib/polymarket";
 
 export function CityDetail({ cityId }: { cityId: string }) {
   // Giorno selezionato condiviso con la home (Oggi/Domani).
@@ -67,6 +70,12 @@ export function CityDetail({ cityId }: { cityId: string }) {
     return m;
   }, [oracle.data]);
 
+  // Bucket dove oracolo e mercato CORRISPONDONO (entrambi il più probabile).
+  const marketTopLabel = mostLikelyBucketLabel(buckets, prices)?.label ?? null;
+  const oracleTopLabel = oracle.data?.distribution.mostLikely?.label ?? null;
+  const agreementLabel =
+    marketTopLabel && oracleTopLabel && marketTopLabel === oracleTopLabel ? marketTopLabel : null;
+
   const noMarket = markets.data && !markets.data.hasMarket;
 
   // Refresh manuale del mercato (e oracolo) di questa città.
@@ -76,7 +85,14 @@ export function CityDetail({ cityId }: { cityId: string }) {
     oracle.refetch();
   };
   const updatedAt = markets.dataUpdatedAt
-    ? new Date(markets.dataUpdatedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+    ? new Date(markets.dataUpdatedAt).toLocaleString("en-GB", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      })
     : null;
 
   return (
@@ -93,32 +109,14 @@ export function CityDetail({ cityId }: { cityId: string }) {
           {station ? (
             <span className="text-xs text-muted-foreground hidden sm:inline">· {station}</span>
           ) : null}
-          <div className="ml-auto flex items-center gap-2.5">
-            <Clock timeZone={cityInfo?.timezone} className="text-xs text-muted-foreground" />
-            {updatedAt ? (
-              <span
-                suppressHydrationWarning
-                className="text-xs text-muted-foreground tabular-nums hidden sm:inline"
-              >
-                Updated {updatedAt}
-              </span>
-            ) : null}
-            <button
-              onClick={refresh}
-              disabled={isRefreshing}
-              aria-label="Refresh market"
-              title="Refresh market"
-              className="grid place-items-center h-8 w-8 rounded-lg border border-border/60 bg-card/50 text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors disabled:opacity-60"
-            >
-              <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
-            </button>
+          <div className="ml-auto">
             <ConnectionStatus />
           </div>
         </div>
       </header>
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
-        {/* Tab giorno: Oggi / Domani (condivisa con la home) */}
+        {/* Tab giorno: Oggi / Domani */}
         <DayTabs className="mb-5" />
 
         {noMarket ? (
@@ -145,6 +143,13 @@ export function CityDetail({ cityId }: { cityId: string }) {
           <div className="space-y-6">
             <ComparisonHeader
               image={event?.image ?? null}
+              event={event}
+              city={cityForCards}
+              timezone={cityInfo?.timezone}
+              endDate={event?.endDate ?? null}
+              updatedAt={updatedAt}
+              onRefresh={refresh}
+              refreshing={isRefreshing}
               marketMostLikely={mostLikelyBucketLabel(buckets, prices)}
               oracleLabel={oracle.data?.distribution.mostLikely?.label ?? null}
               oracleProb={oracle.data?.distribution.mostLikely?.probability ?? null}
@@ -169,10 +174,10 @@ export function CityDetail({ cityId }: { cityId: string }) {
                         key={b.conditionId || b.label}
                         event={event!}
                         bucket={b}
-                        city={cityForCards}
                         oracleProb={oracleProbByLabel.get(b.label) ?? null}
                         livePrice={b.yesTokenId ? (prices[b.yesTokenId] ?? null) : null}
                         isLive={connected}
+                        isMatch={agreementLabel !== null && b.label === agreementLabel}
                       />
                     ))}
                   </div>
@@ -201,52 +206,102 @@ export function CityDetail({ cityId }: { cityId: string }) {
 
 function ComparisonHeader({
   image,
+  event,
+  city,
+  timezone,
+  endDate,
+  updatedAt,
+  onRefresh,
+  refreshing,
   marketMostLikely,
   oracleLabel,
   oracleProb,
 }: {
   image: string | null;
+  event: TempMarketEvent | null;
+  city: City;
+  timezone?: string;
+  endDate: string | null;
+  updatedAt: string | null;
+  onRefresh: () => void;
+  refreshing: boolean;
   marketMostLikely: { label: string; prob: number } | null;
   oracleLabel: string | null;
   oracleProb: number | null;
 }) {
   const agree = marketMostLikely && oracleLabel && marketMostLikely.label === oracleLabel;
+  // Come le card opzioni: Aligned → bordo verde marcato; Aligned + edge positivo → pulse.
+  const edgePts =
+    agree && oracleProb !== null && marketMostLikely !== null
+      ? edgePoints(oracleProb, marketMostLikely.prob)
+      : null;
+  const cardCls =
+    edgePts !== null && edgePts > 0
+      ? "border-2 border-emerald-500 pulse-edge"
+      : agree
+        ? "border-2 border-emerald-500 ring-2 ring-emerald-500/30 shadow-[0_8px_30px_-10px] shadow-emerald-500/50"
+        : "";
+
   return (
-    <Card className="relative overflow-hidden p-5 flex flex-wrap items-center gap-x-8 gap-y-2">
+    <Card className={cn("relative overflow-hidden p-5 gap-4", cardCls)}>
       {/* Immagine mercato Polymarket come sfondo sfumato */}
       {image ? (
         <div className="absolute inset-0 z-0 pointer-events-none">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={image} alt="" className="h-full w-full object-cover opacity-45 blur-[1px] scale-105" />
-          <div className="absolute inset-0 bg-gradient-to-r from-card via-card/70 to-card/15" />
-          <div className="absolute inset-0 bg-gradient-to-t from-card/50 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-r from-card via-card/70 to-card/20" />
+          <div className="absolute inset-0 bg-gradient-to-t from-card/60 to-transparent" />
         </div>
       ) : null}
 
-      <div className="relative z-10">
+      {/* Riga 1: previsioni Oracolo vs Mercato + esito */}
+      <div className="relative z-10 flex flex-wrap items-center gap-x-5 gap-y-2">
         <Side title="Oracle says" label={oracleLabel} prob={oracleProb} accent="text-primary" />
-      </div>
-      <span className="relative z-10 text-muted-foreground text-base">vs</span>
-      <div className="relative z-10">
+        <span className="text-muted-foreground text-sm font-medium">vs</span>
         <Side
           title="Market says"
           label={marketMostLikely?.label ?? null}
           prob={marketMostLikely?.prob ?? null}
           accent="text-accent"
         />
+        {marketMostLikely && oracleLabel ? (
+          <Badge
+            variant="outline"
+            className={
+              agree
+                ? "ml-auto shrink-0 gap-1 border-emerald-500/60 bg-emerald-500/10 text-emerald-400"
+                : "ml-auto shrink-0 gap-1 border-amber-500/60 bg-amber-500/10 text-amber-400"
+            }
+          >
+            {agree ? "Aligned" : "Diverging → value"}
+          </Badge>
+        ) : null}
       </div>
-      {marketMostLikely && oracleLabel ? (
-        <Badge
-          variant="outline"
-          className={
-            agree
-              ? "relative z-10 w-full justify-center sm:w-auto sm:ml-auto sm:justify-start border-emerald-500/50 text-emerald-400"
-              : "relative z-10 w-full justify-center sm:w-auto sm:ml-auto sm:justify-start border-amber-500/50 text-amber-400"
-          }
-        >
-          {agree ? "Aligned" : "Diverging → possible value"}
-        </Badge>
-      ) : null}
+
+      {/* Riga 2: meta (ora locale · chiusura) + controlli (updated · refresh · info) */}
+      <div className="relative z-10 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border/40 pt-3 text-sm">
+        <Clock timeZone={timezone} label="Local time" className="text-muted-foreground" />
+        <span className="text-muted-foreground/40">·</span>
+        <Countdown endDate={endDate} showLabel />
+
+        <div className="ml-auto flex items-center gap-2.5 text-muted-foreground">
+          {updatedAt ? (
+            <span suppressHydrationWarning className="text-xs tabular-nums hidden md:inline">
+              Updated {updatedAt}
+            </span>
+          ) : null}
+          <button
+            onClick={onRefresh}
+            disabled={refreshing}
+            aria-label="Refresh market"
+            title="Refresh market"
+            className="grid place-items-center h-7 w-7 rounded-md border border-border/60 bg-card/50 hover:text-foreground hover:border-primary/40 transition-colors disabled:opacity-60"
+          >
+            <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
+          </button>
+          {event ? <MarketInfoDialog event={event} city={city} /> : null}
+        </div>
+      </div>
     </Card>
   );
 }

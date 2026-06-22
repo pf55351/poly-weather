@@ -5,8 +5,16 @@ import { Clock as ClockIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Orario attuale (24h) che si aggiorna ogni secondo. Con `timeZone` mostra l'ora
-// locale di quel fuso (es. l'ora corrente nella città).
-export function Clock({ className, timeZone }: { className?: string; timeZone?: string }) {
+// locale di quel fuso (es. l'ora corrente nella città). `label` aggiunge un'etichetta.
+export function Clock({
+  className,
+  timeZone,
+  label,
+}: {
+  className?: string;
+  timeZone?: string;
+  label?: string;
+}) {
   const [now, setNow] = useState("");
 
   useEffect(() => {
@@ -28,7 +36,8 @@ export function Clock({ className, timeZone }: { className?: string; timeZone?: 
       className={cn("inline-flex items-center gap-1.5 tabular-nums", className)}
     >
       <ClockIcon className="h-3.5 w-3.5" />
-      {now}
+      {label ? <span>{label}</span> : null}
+      <span className={label ? "font-semibold text-foreground" : undefined}>{now}</span>
     </span>
   );
 }

@@ -91,7 +91,7 @@ export async function discoverCities(date: Date, signal?: AbortSignal): Promise<
     // usiamo la nostra cache in-memory (cardsCache, TTL 60s) per il dedup.
     const res = await fetch(url, {
       signal,
-      headers: { "User-Agent": "poly-bot/0.1" },
+      headers: { "User-Agent": "polymeteo/0.1" },
       cache: "no-store",
     });
     if (!res.ok) break;
