@@ -5,7 +5,8 @@ import { Card } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { EdgeBadge } from "./edge-badge";
 import { polymarketBucketUrl, type TempBucket, type TempMarketEvent } from "@/lib/polymarket";
-import { pct, usd, edgePoints } from "@/lib/format";
+import { pct, usd, edgePoints, signedPoints } from "@/lib/format";
+import { evPerContract, suggestedStake, isValue } from "@/lib/decision";
 import { cn } from "@/lib/utils";
 
 export function MarketCard({
@@ -28,6 +29,12 @@ export function MarketCard({
   const change = bucket.oneDayPriceChange ?? 0;
   const edge = oracleProb !== null ? edgePoints(oracleProb, marketProb) : null;
   const orderUrl = polymarketBucketUrl(event.slug, bucket.slug);
+
+  // Valore reale: vs il prezzo d'acquisto effettivo (best ask), non il mid.
+  const ask = bucket.bestAsk ?? marketProb;
+  const value = oracleProb !== null && isValue(oracleProb, ask);
+  const evPts = oracleProb !== null ? evPerContract(oracleProb, ask) * 100 : null;
+  const stake = oracleProb !== null ? suggestedStake(oracleProb, ask) : 0;
 
   // Bordo verde MARCATO solo quando oracolo e mercato corrispondono; lampeggia se edge positivo.
   const pulse = isMatch && edge !== null && edge > 0;
@@ -90,6 +97,14 @@ export function MarketCard({
         </div>
         {edge !== null ? <EdgeBadge points={edge} /> : null}
       </div>
+
+      {/* Valore atteso al netto del prezzo d'acquisto (best ask) + stake di Kelly */}
+      {value ? (
+        <div className="relative z-10 flex items-center justify-between rounded-md bg-emerald-500/10 px-2 py-1 text-xs font-medium text-emerald-400 pointer-events-none">
+          <span>Value · EV {signedPoints(evPts!)}</span>
+          <span>stake {pct(stake, 0)}</span>
+        </div>
+      ) : null}
 
       <div className="relative z-10 flex justify-between text-[11px] text-muted-foreground tabular-nums pointer-events-none">
         <span>Vol 24h {usd(bucket.volume24hr)}</span>

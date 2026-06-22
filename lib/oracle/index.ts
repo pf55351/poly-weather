@@ -9,6 +9,7 @@ import { sevenTimer } from "./sources/seven-timer";
 import { wunderground } from "./sources/wunderground";
 import { openWeather } from "./sources/openweather";
 import { weatherApi } from "./sources/weatherapi";
+import { fetchObservedMaxC } from "./observed";
 import type { SourceContext, WeatherSource } from "./sources/types";
 
 // Fonti dell'oracolo. Wunderground è la FONTE DI RISOLUZIONE → peso alto (vedi sua `weight`).
@@ -64,34 +65,33 @@ export async function runOracle(
 
   const active = ALL_SOURCES.filter((s) => s.enabled());
 
-  const settled = await Promise.allSettled(
-    active.map((s) => s.fetchMembers(ctx)),
-  );
+  // In parallelo: le previsioni delle fonti + il massimo già osservato oggi (floor intraday).
+  const [settled, floorC] = await Promise.all([
+    Promise.allSettled(active.map((s) => s.fetchMembers(ctx))),
+    fetchObservedMaxC(city, date, signal).catch(() => null),
+  ]);
 
   const summaries: SourceSummary[] = [];
-  // weightedMembers: ogni fonte contribuisce `weight` copie dei suoi membri → la
-  // distribuzione riflette il peso (Wunderground domina senza però azzerare le altre).
-  const weightedMembers: number[] = [];
-  let sampleCount = 0; // conteggio REALE (non pesato) per la UI
+  // Centro (μ) = media PESATA dei member (Wunderground sposta il centro).
+  // Dispersione (σ) = stdev dei member NON pesati (vero disaccordo tra modelli).
+  let weightedSum = 0;
+  let weightedN = 0;
+  const unweightedMembers: number[] = [];
 
   settled.forEach((r, i) => {
     const src = active[i];
     const weight = Math.max(1, Math.round(src.weight ?? 1));
     if (r.status === "fulfilled") {
       const members = r.value;
-      sampleCount += members.length;
-      for (let k = 0; k < weight; k++) weightedMembers.push(...members);
+      unweightedMembers.push(...members);
+      for (const v of members) {
+        weightedSum += v * weight;
+        weightedN += weight;
+      }
       const meanC = members.length
         ? members.reduce((s, v) => s + v, 0) / members.length
         : null;
-      summaries.push({
-        id: src.id,
-        label: src.label,
-        memberCount: members.length,
-        weight,
-        meanC,
-        ok: true,
-      });
+      summaries.push({ id: src.id, label: src.label, memberCount: members.length, weight, meanC, ok: true });
     } else {
       summaries.push({
         id: src.id,
@@ -105,7 +105,25 @@ export async function runOracle(
     }
   });
 
-  const distribution = buildDistribution(weightedMembers, city.unit, marketBuckets);
+  const sampleCount = unweightedMembers.length;
+  const meanC = weightedN > 0 ? weightedSum / weightedN : NaN;
+  // σ dai member non pesati, inflazionata (ensemble sotto-disperso) e con floor.
+  const rawMean = sampleCount
+    ? unweightedMembers.reduce((s, v) => s + v, 0) / sampleCount
+    : NaN;
+  const rawSd = sampleCount
+    ? Math.sqrt(unweightedMembers.reduce((s, v) => s + (v - rawMean) ** 2, 0) / sampleCount)
+    : 0;
+  const sigmaC = Math.max(0.7, rawSd * 1.4);
+
+  const distribution = buildDistribution({
+    meanC,
+    sigmaC,
+    unit: city.unit,
+    sampleCount,
+    marketBuckets,
+    floorC: floorC ?? undefined,
+  });
 
   return {
     cityId: city.id,
