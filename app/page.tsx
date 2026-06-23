@@ -5,6 +5,7 @@ import { Search, X, ThermometerSun, Info, ChevronDown, RefreshCw } from "lucide-
 import { Badge } from "@/components/ui/badge";
 import { CityListItem, CityListItemSkeleton } from "@/components/city-list-item";
 import { DayTabs } from "@/components/day-tabs";
+import { TempConverterDialog } from "@/components/temp-converter-dialog";
 import { useBoard } from "@/hooks/use-board";
 import { useSelectedDate } from "@/hooks/use-selected-date";
 import { cn } from "@/lib/utils";
@@ -96,6 +97,7 @@ export default function Home() {
                 Updated {updatedAt}
               </span>
             ) : null}
+            <TempConverterDialog />
             <button
               onClick={() => board.refetch()}
               disabled={board.isFetching}

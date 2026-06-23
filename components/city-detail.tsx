@@ -13,6 +13,7 @@ import { useSelectedDate } from "@/hooks/use-selected-date";
 import { ConnectionStatus } from "@/components/connection-status";
 import { DayTabs } from "@/components/day-tabs";
 import { Clock } from "@/components/clock";
+import { TempConverterDialog } from "@/components/temp-converter-dialog";
 import { Countdown } from "@/components/countdown";
 import { MarketCard } from "@/components/market-card";
 import { MarketInfoDialog } from "@/components/market-info-dialog";
@@ -109,7 +110,8 @@ export function CityDetail({ cityId }: { cityId: string }) {
           {station ? (
             <span className="text-xs text-muted-foreground hidden sm:inline">· {station}</span>
           ) : null}
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            <TempConverterDialog className="h-7 w-7" />
             <ConnectionStatus />
           </div>
         </div>
