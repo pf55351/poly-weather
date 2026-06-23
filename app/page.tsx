@@ -8,14 +8,39 @@ import { DayTabs } from "@/components/day-tabs";
 import { TempConverterDialog } from "@/components/temp-converter-dialog";
 import { useBoard } from "@/hooks/use-board";
 import { useSelectedDate } from "@/hooks/use-selected-date";
+import { todayISO } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 
 type SortMode = "edge" | "suggested";
 
+/** Giorno (YYYY-MM-DD, fuso della città) a cui il mercato si riferisce: il close
+ *  time è la mezzanotte locale successiva, quindi -1s ricade nel giorno del mercato. */
+function marketDayISO(endDateISO: string, timeZone: string): string {
+  const d = new Date(Date.parse(endDateISO) - 1000);
+  try {
+    return d.toLocaleDateString("en-CA", { timeZone });
+  } catch {
+    return d.toLocaleDateString("en-CA");
+  }
+}
+
 export default function Home() {
   const date = useSelectedDate();
   const board = useBoard(date);
-  const allRows = useMemo(() => board.data?.cities ?? [], [board.data]);
+  const rawRows = useMemo(() => board.data?.cities ?? [], [board.data]);
+
+  // Solo per oggi: nascondi i mercati già chiusi (close time passato) o che in realtà
+  // riguardano un altro giorno (fallback su evento di domani).
+  const allRows = useMemo(() => {
+    if (date !== todayISO()) return rawRows;
+    const now = Date.now();
+    return rawRows.filter((c) => {
+      if (!c.hasMarket || !c.endDate) return true;
+      const end = Date.parse(c.endDate);
+      if (Number.isFinite(end) && end <= now) return false; // chiuso
+      return marketDayISO(c.endDate, c.timezone) === date; // riguarda oggi
+    });
+  }, [rawRows, date]);
 
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortMode>("edge"); // edge di default
