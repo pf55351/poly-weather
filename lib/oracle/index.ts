@@ -1,7 +1,7 @@
 // Aggregatore dell'oracolo: interroga TUTTE le fonti abilitate in parallelo,
 // concatena i loro members e costruisce la distribuzione di probabilità.
 import type { City } from "../cities";
-import { buildDistribution, type BucketDef, type DistributionResult } from "./distribution";
+import { buildDistribution, cToF, type BucketDef, type DistributionResult } from "./distribution";
 import { openMeteoEnsemble, openMeteoMultiModel } from "./sources/open-meteo";
 import { metNorway } from "./sources/met-norway";
 import { wttrIn } from "./sources/wttr";
@@ -9,7 +9,8 @@ import { sevenTimer } from "./sources/seven-timer";
 import { wunderground } from "./sources/wunderground";
 import { openWeather } from "./sources/openweather";
 import { weatherApi } from "./sources/weatherapi";
-import { fetchObservedMaxC } from "./observed";
+import { fetchObservedTemps } from "./observed";
+import { fetchResolverObserved } from "./resolver-observed";
 import type { SourceContext, WeatherSource } from "./sources/types";
 
 // Fonti dell'oracolo. Wunderground è la FONTE DI RISOLUZIONE → peso alto (vedi sua `weight`).
@@ -47,6 +48,12 @@ export interface OracleResult {
   sourceCount: number;
   /** numero REALE di stime (non pesato), per la UI */
   sampleCount: number;
+  /** temperatura attuale nell'unità della città (°C/°F), per la UI */
+  currentTemp: number | null;
+  /** massimo registrato finora oggi (unità della città); preferito dal risolutore */
+  observedMax: number | null;
+  /** true se observedMax/currentTemp arrivano dalla stazione di risoluzione (Wunderground) */
+  observedFromResolver: boolean;
 }
 
 export async function runOracle(
@@ -65,11 +72,27 @@ export async function runOracle(
 
   const active = ALL_SOURCES.filter((s) => s.enabled());
 
-  // In parallelo: le previsioni delle fonti + il massimo già osservato oggi (floor intraday).
-  const [settled, floorC] = await Promise.all([
+  // Le osservazioni intraday valgono solo se il giorno target è OGGI nel fuso della città:
+  // per i mercati "Domani" non esiste ancora un massimo osservato (niente floor).
+  const todayLocal = new Date().toLocaleDateString("sv-SE", { timeZone: city.timezone });
+  const isToday = date === todayLocal;
+
+  // In parallelo: le previsioni delle fonti + osservazioni intraday (solo se oggi).
+  // Il massimo "finora" lo prendiamo PRIMA dal risolutore (Wunderground = stazione su cui
+  // si risolve il mercato); Open-Meteo è il fallback. Questo floor tronca la distribuzione
+  // e diventa sempre più decisivo col passare della giornata.
+  const [settled, observed, resolver] = await Promise.all([
     Promise.allSettled(active.map((s) => s.fetchMembers(ctx))),
-    fetchObservedMaxC(city, date, signal).catch(() => null),
+    isToday
+      ? fetchObservedTemps(city, date, signal).catch(() => ({ maxC: null, currentC: null }))
+      : Promise.resolve({ maxC: null, currentC: null }),
+    isToday
+      ? fetchResolverObserved(city.lat, city.lon, signal).catch(() => ({ maxC: null, currentC: null }))
+      : Promise.resolve({ maxC: null, currentC: null }),
   ]);
+  const observedFromResolver = resolver.maxC !== null;
+  const floorC = resolver.maxC ?? observed.maxC;
+  const currentC = resolver.currentC ?? observed.currentC;
 
   const summaries: SourceSummary[] = [];
   // Centro (μ) = media PESATA dei member (Wunderground sposta il centro).
@@ -132,5 +155,14 @@ export async function runOracle(
     sources: summaries,
     sourceCount: summaries.filter((s) => s.ok).length,
     sampleCount,
+    currentTemp: toUnit(currentC, city.unit),
+    observedMax: toUnit(floorC, city.unit),
+    observedFromResolver,
   };
+}
+
+/** Converte °C → unità della scommessa (°C/°F), preservando null. */
+function toUnit(c: number | null, unit: "C" | "F"): number | null {
+  if (c === null) return null;
+  return unit === "F" ? cToF(c) : c;
 }

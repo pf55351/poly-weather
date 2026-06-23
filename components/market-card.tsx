@@ -1,12 +1,13 @@
 "use client";
 
-import { TrendingDown, TrendingUp, Radio, ExternalLink } from "lucide-react";
+import { TrendingDown, TrendingUp, Radio, ExternalLink, Check, Zap } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { EdgeBadge } from "./edge-badge";
 import { polymarketBucketUrl, type TempBucket, type TempMarketEvent } from "@/lib/polymarket";
-import { pct, usd, edgePoints, signedPoints } from "@/lib/format";
-import { evPerContract, suggestedStake, isValue } from "@/lib/decision";
+import { pct, usd, edgePoints } from "@/lib/format";
+import { buySignal } from "@/lib/decision";
+import type { TempUnit } from "@/lib/cities";
 import { cn } from "@/lib/utils";
 
 export function MarketCard({
@@ -16,6 +17,10 @@ export function MarketCard({
   livePrice,
   isLive,
   isMatch = false,
+  unit,
+  sourceCount,
+  stdev,
+  dayFraction,
 }: {
   event: TempMarketEvent;
   bucket: TempBucket;
@@ -24,21 +29,32 @@ export function MarketCard({
   isLive: boolean;
   /** true se su QUESTO bucket oracolo e mercato corrispondono (entrambi il più probabile) */
   isMatch?: boolean;
+  unit: TempUnit;
+  /** numero di fonti meteo che hanno risposto */
+  sourceCount: number;
+  /** dispersione dell'oracolo (unità target) */
+  stdev: number;
+  /** frazione 0..1 di giornata locale trascorsa, o null se ignota */
+  dayFraction: number | null;
 }) {
   const marketProb = livePrice ?? bucket.yesPrice;
   const change = bucket.oneDayPriceChange ?? 0;
   const edge = oracleProb !== null ? edgePoints(oracleProb, marketProb) : null;
   const orderUrl = polymarketBucketUrl(event.slug, bucket.slug);
 
-  // Valore reale: vs il prezzo d'acquisto effettivo (best ask), non il mid.
-  const ask = bucket.bestAsk ?? marketProb;
-  const value = oracleProb !== null && isValue(oracleProb, ask);
-  const evPts = oracleProb !== null ? evPerContract(oracleProb, ask) * 100 : null;
-  const stake = oracleProb !== null ? suggestedStake(oracleProb, ask) : 0;
+  // Segnale d'acquisto: si accende SOLO quando TUTTI i gate sono soddisfatti.
+  const signal = buySignal({
+    q: oracleProb,
+    ask: bucket.bestAsk ?? marketProb,
+    sourceCount,
+    stdev,
+    unit,
+    volume24hr: bucket.volume24hr,
+    dayFraction,
+  });
 
-  // Bordo verde MARCATO solo quando oracolo e mercato corrispondono; lampeggia se edge positivo.
-  const pulse = isMatch && edge !== null && edge > 0;
-  const cardCls = pulse
+  // Bordo verde: segnale d'acquisto (lampeggia) > match oracolo/mercato.
+  const cardCls = signal.buy
     ? "border-2 border-emerald-500 pulse-edge"
     : isMatch
       ? "border-2 border-emerald-500 ring-2 ring-emerald-500/30 shadow-[0_8px_30px_-10px] shadow-emerald-500/50"
@@ -57,7 +73,35 @@ export function MarketCard({
 
       <div className="relative z-10 flex items-start justify-between gap-2 pointer-events-none">
         <span className="text-lg font-bold leading-tight">{bucket.label}</span>
-        {isLive && livePrice !== null ? (
+        {signal.buy ? (
+          <div className="shrink-0 pointer-events-auto">
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white shadow-[0_0_12px_2px] shadow-emerald-500/60 animate-pulse cursor-help" />
+                }
+                aria-label="Buy signal"
+              >
+                <Zap className="h-3 w-3 fill-current" />
+                Buy {signal.edgePts !== null ? `+${signal.edgePts.toFixed(0)}pt` : ""}
+              </TooltipTrigger>
+              <TooltipContent className="max-w-[240px]">
+                <p className="mb-1.5 font-semibold">All buy conditions met:</p>
+                <ul className="space-y-0.5">
+                  {signal.checks.map((c) => (
+                    <li key={c.label} className="flex items-center gap-1.5">
+                      <Check className="h-3 w-3 text-emerald-400" />
+                      {c.label}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                  Oracle beats the price with margin in the reliable zone. Not financial advice.
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        ) : isLive && livePrice !== null ? (
           <div className="shrink-0 pointer-events-auto">
             <Tooltip>
               <TooltipTrigger
@@ -97,14 +141,6 @@ export function MarketCard({
         </div>
         {edge !== null ? <EdgeBadge points={edge} /> : null}
       </div>
-
-      {/* Valore atteso al netto del prezzo d'acquisto (best ask) + stake di Kelly */}
-      {value ? (
-        <div className="relative z-10 flex items-center justify-between rounded-md bg-emerald-500/10 px-2 py-1 text-xs font-medium text-emerald-400 pointer-events-none">
-          <span>Value · EV {signedPoints(evPts!)}</span>
-          <span>stake {pct(stake, 0)}</span>
-        </div>
-      ) : null}
 
       <div className="relative z-10 flex justify-between text-[11px] text-muted-foreground tabular-nums pointer-events-none">
         <span>Vol 24h {usd(bucket.volume24hr)}</span>

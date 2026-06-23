@@ -25,6 +25,10 @@ export interface BoardRow {
   /** edge = P_oracolo − P_mercato (punti %) quando i due indicano lo stesso bucket, altrimenti null */
   edge: number | null;
   sourceCount: number;
+  /** temperatura attuale nell'unità della città (°C/°F) */
+  currentTemp: number | null;
+  /** massimo registrato finora oggi (unità della città), dal risolutore quando disponibile */
+  observedMax: number | null;
 }
 
 export interface BoardResponse {
@@ -67,6 +71,8 @@ async function computeRow(card: CityCard, dateStr: string, dateObj: Date): Promi
     oracleWinner: null,
     edge: null,
     sourceCount: 0,
+    currentTemp: null,
+    observedMax: null,
   };
 
   const city = await resolveCity(card.cityId, dateObj).catch(() => null);
@@ -90,6 +96,8 @@ async function computeRow(card: CityCard, dateStr: string, dateObj: Date): Promi
   const ml = oracle?.distribution.mostLikely ?? null;
   base.oracleWinner = ml ? { label: ml.label, prob: ml.probability } : null;
   base.sourceCount = oracle?.sourceCount ?? 0;
+  base.currentTemp = oracle?.currentTemp ?? null;
+  base.observedMax = oracle?.observedMax ?? null;
 
   if (base.marketWinner && base.oracleWinner && base.marketWinner.label === base.oracleWinner.label) {
     base.edge = edgePoints(base.oracleWinner.prob, base.marketWinner.prob);

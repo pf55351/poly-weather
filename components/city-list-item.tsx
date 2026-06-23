@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { Check, ChevronRight, Cloud, Thermometer, MapPin } from "lucide-react";
+import { Check, ChevronRight, Cloud, Thermometer, MapPin, ThermometerSun, ArrowUp } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Countdown } from "@/components/countdown";
-import { isAligned, pct, signedPoints } from "@/lib/format";
+import { isAligned, pct, signedPoints, temp } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { BoardRow } from "@/app/api/board/route";
 
@@ -60,6 +60,24 @@ export function CityListItem({ row }: { row: BoardRow }) {
               />
             ) : null}
             <div className="ml-auto flex items-center gap-2 shrink-0">
+              {row.currentTemp !== null ? (
+                <span
+                  className="flex items-center gap-1 text-xs font-medium tabular-nums text-amber-400"
+                  title="Current temperature"
+                >
+                  <ThermometerSun className="h-3.5 w-3.5" />
+                  {temp(row.currentTemp, row.unit, 0)}
+                </span>
+              ) : null}
+              {row.observedMax !== null ? (
+                <span
+                  className="flex items-center gap-1 text-xs font-medium tabular-nums text-rose-400"
+                  title="Highest temperature recorded so far today (resolution station)"
+                >
+                  <ArrowUp className="h-3.5 w-3.5" />
+                  {temp(row.observedMax, row.unit, 0)}
+                </span>
+              ) : null}
               <Countdown endDate={row.endDate} className="text-xs" />
               <Badge variant="outline" className="text-[10px]">
                 °{row.unit}

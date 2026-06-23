@@ -16,15 +16,27 @@ export function Clock({
   label?: string;
 }) {
   const [now, setNow] = useState("");
+  const [date, setDate] = useState("");
 
   useEffect(() => {
-    const tick = () =>
+    const tick = () => {
+      const d = new Date();
       setNow(
-        new Date().toLocaleTimeString("en-GB", {
+        d.toLocaleTimeString("en-GB", {
           hour12: false,
           ...(timeZone ? { timeZone } : {}),
         }),
       );
+      setDate(
+        d.toLocaleDateString("en-US", {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+          ...(timeZone ? { timeZone } : {}),
+        }),
+      );
+    };
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
@@ -38,6 +50,11 @@ export function Clock({
       <ClockIcon className="h-3.5 w-3.5" />
       {label ? <span>{label}</span> : null}
       <span className={label ? "font-semibold text-foreground" : undefined}>{now}</span>
+      {date ? (
+        <span className={label ? "font-semibold text-foreground" : undefined}>
+          · {date}
+        </span>
+      ) : null}
     </span>
   );
 }

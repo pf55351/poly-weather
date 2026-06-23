@@ -3,7 +3,7 @@
 import { useEffect, useMemo } from "react";
 import { useSetAtom } from "jotai";
 import Link from "next/link";
-import { ArrowLeft, CloudOff, RefreshCw } from "lucide-react";
+import { ArrowLeft, CloudOff, RefreshCw, ThermometerSun, ArrowUp } from "lucide-react";
 import { liveStreamingAtom } from "@/lib/atoms";
 import { cn } from "@/lib/utils";
 import { useMarkets } from "@/hooks/use-markets";
@@ -20,7 +20,7 @@ import { OraclePanel } from "@/components/oracle-panel";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { pct, edgePoints } from "@/lib/format";
+import { pct, edgePoints, temp } from "@/lib/format";
 import type { City } from "@/lib/cities";
 import type { TempMarketEvent } from "@/lib/polymarket";
 
@@ -153,6 +153,9 @@ export function CityDetail({ cityId }: { cityId: string }) {
               marketMostLikely={mostLikelyBucketLabel(buckets, prices)}
               oracleLabel={oracle.data?.distribution.mostLikely?.label ?? null}
               oracleProb={oracle.data?.distribution.mostLikely?.probability ?? null}
+              currentTemp={oracle.data?.currentTemp ?? null}
+              observedMax={oracle.data?.observedMax ?? null}
+              observedFromResolver={oracle.data?.observedFromResolver ?? false}
             />
 
             <div className="grid gap-6 lg:grid-cols-[1fr_minmax(360px,420px)]">
@@ -178,6 +181,10 @@ export function CityDetail({ cityId }: { cityId: string }) {
                         livePrice={b.yesTokenId ? (prices[b.yesTokenId] ?? null) : null}
                         isLive={connected}
                         isMatch={agreementLabel !== null && b.label === agreementLabel}
+                        unit={cityForCards.unit}
+                        sourceCount={oracle.data?.sourceCount ?? 0}
+                        stdev={oracle.data?.distribution.stats.stdev ?? Infinity}
+                        dayFraction={localDayFraction(cityInfo?.timezone)}
                       />
                     ))}
                   </div>
@@ -216,6 +223,9 @@ function ComparisonHeader({
   marketMostLikely,
   oracleLabel,
   oracleProb,
+  currentTemp,
+  observedMax,
+  observedFromResolver,
 }: {
   image: string | null;
   event: TempMarketEvent | null;
@@ -228,6 +238,9 @@ function ComparisonHeader({
   marketMostLikely: { label: string; prob: number } | null;
   oracleLabel: string | null;
   oracleProb: number | null;
+  currentTemp: number | null;
+  observedMax: number | null;
+  observedFromResolver: boolean;
 }) {
   const agree = marketMostLikely && oracleLabel && marketMostLikely.label === oracleLabel;
   // Come le card opzioni: Aligned → bordo verde marcato; Aligned + edge positivo → pulse.
@@ -283,6 +296,34 @@ function ComparisonHeader({
         <Clock timeZone={timezone} label="Local time" className="text-muted-foreground" />
         <span className="text-muted-foreground/40">·</span>
         <Countdown endDate={endDate} showLabel />
+        {currentTemp !== null ? (
+          <>
+            <span className="text-muted-foreground/40">·</span>
+            <span
+              className="flex items-center gap-1.5 font-medium tabular-nums text-amber-400"
+              title="Current temperature"
+            >
+              <ThermometerSun className="h-3.5 w-3.5" />
+              Now {temp(currentTemp, city.unit, 1)}
+            </span>
+          </>
+        ) : null}
+        {observedMax !== null ? (
+          <>
+            <span className="text-muted-foreground/40">·</span>
+            <span
+              className="flex items-center gap-1.5 font-medium tabular-nums text-rose-400"
+              title={
+                observedFromResolver
+                  ? "Highest recorded so far today — resolution station (Wunderground)"
+                  : "Highest recorded so far today (modeled)"
+              }
+            >
+              <ArrowUp className="h-3.5 w-3.5" />
+              Max {temp(observedMax, city.unit, 1)}
+            </span>
+          </>
+        ) : null}
 
         <div className="ml-auto flex items-center gap-2.5 text-muted-foreground">
           {updatedAt ? (
@@ -330,6 +371,21 @@ function Side({
 
 function ErrorCard({ msg }: { msg: string }) {
   return <Card className="p-6 text-sm text-muted-foreground border-dashed">{msg}</Card>;
+}
+
+// Frazione 0..1 di giornata trascorsa nel fuso della città (per il gate "massimo in fase
+// di assestamento": il picco di temperatura arriva di norma nel pomeriggio).
+function localDayFraction(timezone?: string): number | null {
+  if (!timezone) return null;
+  const hhmm = new Date().toLocaleTimeString("en-GB", {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: timezone,
+  });
+  const [h, m] = hhmm.split(":").map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  return (h * 60 + m) / 1440;
 }
 
 function mostLikelyBucketLabel(
