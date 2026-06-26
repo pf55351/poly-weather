@@ -169,4 +169,30 @@
   .pulse-edge {
     animation: pulse-edge 1.5s ease-in-out infinite;
   }
+  /* Bordo viola lampeggiante: corrispondenza oracolo/mercato (stesso bucket più probabile) */
+  @keyframes pulse-match {
+    0%,
+    100% {
+      box-shadow: 0 0 0 1px oklch(0.64 0.21 296 / 0.6), 0 0 0 0 oklch(0.64 0.21 296 / 0);
+    }
+    50% {
+      box-shadow: 0 0 0 1px oklch(0.64 0.21 296 / 0.95), 0 0 24px 2px oklch(0.64 0.21 296 / 0.55);
+    }
+  }
+  .pulse-match {
+    animation: pulse-match 1.5s ease-in-out infinite;
+  }
+  /* Bordo rosso lampeggiante: segnale di acquisto «No» */
+  @keyframes pulse-edge-red {
+    0%,
+    100% {
+      box-shadow: 0 0 0 1px oklch(0.63 0.23 25 / 0.6), 0 0 0 0 oklch(0.63 0.23 25 / 0);
+    }
+    50% {
+      box-shadow: 0 0 0 1px oklch(0.63 0.23 25 / 0.95), 0 0 24px 2px oklch(0.63 0.23 25 / 0.55);
+    }
+  }
+  .pulse-edge-red {
+    animation: pulse-edge-red 1.5s ease-in-out infinite;
+  }
 }

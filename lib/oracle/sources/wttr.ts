@@ -1,5 +1,6 @@
 // wttr.in - previsione gratuita senza chiave. Ritorna la temp max (°C) per giorno.
 import type { WeatherSource } from "./types";
+import { cacheInit } from "../../fetch-cache";
 
 export const wttrIn: WeatherSource = {
   id: "wttr-in",
@@ -10,7 +11,7 @@ export const wttrIn: WeatherSource = {
     const res = await fetch(url, {
       signal: ctx.signal,
       headers: { "User-Agent": "curl/8" }, // wttr.in serve JSON solo a client non-browser
-      next: { revalidate: 600 },
+      ...cacheInit(600, ctx.fresh),
     });
     if (!res.ok) throw new Error(`wttr ${res.status}`);
     const data = (await res.json()) as {

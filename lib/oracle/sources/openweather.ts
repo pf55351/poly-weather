@@ -1,6 +1,7 @@
 // OpenWeatherMap - provider con chiave (OPENWEATHER_API_KEY).
 // Degrada con grazia: enabled()=false se la chiave manca, quindi viene saltato.
 import type { WeatherSource } from "./types";
+import { cacheInit } from "../../fetch-cache";
 
 const URL = "https://api.openweathermap.org/data/2.5/forecast";
 
@@ -17,7 +18,7 @@ export const openWeather: WeatherSource = {
     const key = process.env.OPENWEATHER_API_KEY;
     if (!key) throw new Error("OPENWEATHER_API_KEY mancante");
     const url = `${URL}?lat=${ctx.lat}&lon=${ctx.lon}&units=metric&appid=${key}`;
-    const res = await fetch(url, { signal: ctx.signal, next: { revalidate: 600 } });
+    const res = await fetch(url, { signal: ctx.signal, ...cacheInit(600, ctx.fresh) });
     if (!res.ok) throw new Error(`owm ${res.status}`);
     const data = (await res.json()) as { list?: OwmItem[] };
     let max = -Infinity;

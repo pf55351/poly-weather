@@ -9,10 +9,13 @@ export function Countdown({
   endDate,
   className,
   showLabel = false,
+  hideBeyond24h = false,
 }: {
   endDate: string | null;
   className?: string;
   showLabel?: boolean;
+  /** Nasconde il countdown se mancano più di 24h alla chiusura (mercato del giorno successivo). */
+  hideBeyond24h?: boolean;
 }) {
   const [nowMs, setNowMs] = useState<number | null>(null);
   useEffect(() => {
@@ -27,6 +30,9 @@ export function Countdown({
 
   if (!endDate || nowMs === null) return null;
   const diff = new Date(endDate).getTime() - nowMs;
+
+  // Oltre le 24h è un mercato del giorno successivo: non mostrare il conto alla rovescia.
+  if (hideBeyond24h && diff > 86_400_000) return null;
 
   if (diff <= 0) {
     return (

@@ -1,6 +1,7 @@
 // WeatherAPI.com - provider con chiave (WEATHERAPI_KEY).
 // Degrada con grazia se la chiave manca.
 import type { WeatherSource } from "./types";
+import { cacheInit } from "../../fetch-cache";
 
 const URL = "https://api.weatherapi.com/v1/forecast.json";
 
@@ -17,7 +18,7 @@ export const weatherApi: WeatherSource = {
     const key = process.env.WEATHERAPI_KEY;
     if (!key) throw new Error("WEATHERAPI_KEY mancante");
     const url = `${URL}?key=${key}&q=${ctx.lat},${ctx.lon}&days=10`;
-    const res = await fetch(url, { signal: ctx.signal, next: { revalidate: 600 } });
+    const res = await fetch(url, { signal: ctx.signal, ...cacheInit(600, ctx.fresh) });
     if (!res.ok) throw new Error(`weatherapi ${res.status}`);
     const data = (await res.json()) as {
       forecast?: { forecastday?: WaForecastDay[] };

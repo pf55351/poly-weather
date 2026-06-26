@@ -1,6 +1,7 @@
 // 7Timer! - modello meteo gratuito senza chiave. Ricava la temp max (°C) del giorno
 // target dai timepoint a 3h (temp2m) a partire dall'orario di init (UTC).
 import type { WeatherSource } from "./types";
+import { cacheInit } from "../../fetch-cache";
 
 interface SevenTimerResp {
   init?: string; // "YYYYMMDDHH" in UTC
@@ -13,7 +14,7 @@ export const sevenTimer: WeatherSource = {
   enabled: () => true,
   async fetchMembers(ctx) {
     const url = `https://www.7timer.info/bin/api.pl?lon=${ctx.lon}&lat=${ctx.lat}&product=civil&output=json`;
-    const res = await fetch(url, { signal: ctx.signal, next: { revalidate: 600 } });
+    const res = await fetch(url, { signal: ctx.signal, ...cacheInit(600, ctx.fresh) });
     if (!res.ok) throw new Error(`7timer ${res.status}`);
     const data = (await res.json()) as SevenTimerResp;
     const init = data.init;

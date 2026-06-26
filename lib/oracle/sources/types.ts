@@ -10,6 +10,8 @@ export interface SourceContext {
   /** IANA timezone della città, per allineare il "giorno" */
   timezone: string;
   signal?: AbortSignal;
+  /** true = refresh manuale: bypassa la cache delle fetch (no-store). */
+  fresh?: boolean;
 }
 
 export interface WeatherSource {

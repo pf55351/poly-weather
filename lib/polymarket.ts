@@ -1,6 +1,7 @@
 // Client per la Gamma API di Polymarket (pubblica, nessuna auth).
 // Recupera l'evento "Highest temperature in {city} on {date}?" e normalizza i bucket.
 import type { City, TempUnit } from "./cities";
+import { cacheInit } from "./fetch-cache";
 
 const GAMMA = "https://gamma-api.polymarket.com";
 
@@ -26,6 +27,43 @@ export interface TempBucket {
   /** Token id ERC1155 per la sottoscrizione WebSocket (outcome Yes) */
   yesTokenId: string | null;
   clobTokenIds: string[];
+}
+
+// Stazioni per mercati risolti da NOAA (resolutionSource vuoto su Gamma): fallback manuale.
+const NOAA_STATIONS: Record<string, string> = {
+  moscow: "UUWW:9:RU", // Vnukovo
+};
+
+/**
+ * Stazione di risoluzione (formato api.weather.com `ICAO:9:CC`) per una città, ricavata
+ * dall'URL di risoluzione del mercato Polymarket (Wunderground), es.
+ *   https://www.wunderground.com/history/daily/kr/incheon/RKSI  ->  RKSI:9:KR
+ * Così ogni città Wunderground si auto-configura; i mercati NOAA usano il fallback per cityId.
+ */
+export function resolverStationFor(
+  cityId: string,
+  resolutionSource: string | null | undefined,
+): string | undefined {
+  if (resolutionSource) {
+    const cc = resolutionSource.match(/\/daily\/([a-z]{2})\//i)?.[1];
+    const last = resolutionSource.split(/[/?#]/).filter(Boolean).pop();
+    if (cc && last && /^[A-Za-z]{3,4}$/.test(last)) {
+      return `${last.toUpperCase()}:9:${cc.toUpperCase()}`;
+    }
+  }
+  return NOAA_STATIONS[cityId];
+}
+
+/**
+ * Prezzo di mercato "Yes" come midpoint tra miglior bid e miglior ask — la STESSA
+ * grandezza che lo stream WebSocket espone live (`midFromBook`). Si usa ovunque si
+ * mostri la probabilità di mercato (home/board e fallback del dettaglio) così il numero
+ * coincide con quello live, a meno della freschezza. Fallback: lato disponibile, poi
+ * `yesPrice` (outcomePrices Gamma) se l'orderbook non è noto.
+ */
+export function bucketMidPrice(b: Pick<TempBucket, "bestBid" | "bestAsk" | "yesPrice">): number {
+  if (b.bestBid !== null && b.bestAsk !== null) return (b.bestBid + b.bestAsk) / 2;
+  return b.bestBid ?? b.bestAsk ?? b.yesPrice;
 }
 
 export interface TempMarketEvent {
@@ -176,10 +214,11 @@ export async function fetchTempEvent(
   city: City,
   date: Date,
   signal?: AbortSignal,
+  fresh?: boolean,
 ): Promise<TempMarketEvent | null> {
   const q = encodeURIComponent(`Highest temperature in ${city.marketName}`);
   const url = `${GAMMA}/public-search?q=${q}&limit_per_type=20`;
-  const res = await fetch(url, { signal, next: { revalidate: 15 } });
+  const res = await fetch(url, { signal, ...cacheInit(15, fresh) });
   if (!res.ok) throw new Error(`Gamma search failed: ${res.status}`);
   const data = (await res.json()) as { events?: RawEvent[] };
   const events = data.events ?? [];

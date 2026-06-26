@@ -1,26 +1,60 @@
 "use client";
 
 import Link from "next/link";
-import { Check, ChevronRight, Cloud, Thermometer, MapPin, ThermometerSun, ArrowUp } from "lucide-react";
+import {
+  Check,
+  ChevronRight,
+  Cloud,
+  Thermometer,
+  MapPin,
+  ThermometerSun,
+  ArrowUp,
+  Radio,
+  Coins,
+} from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Countdown } from "@/components/countdown";
-import { isAligned, pct, signedPoints, temp } from "@/lib/format";
+import { edgePoints, isAligned, pct, signedPoints, temp, usd } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { BoardRow } from "@/app/api/board/route";
 
 // Riga della lista iniziale: immagine Polymarket di sfondo + titolo + vincitore di
-// mercato e oracolo + edge/divergenza. I dati arrivano già pronti dalla board.
-export function CityListItem({ row }: { row: BoardRow }) {
+// mercato e oracolo + edge/divergenza. Il prezzo di mercato è live (WebSocket condiviso),
+// così coincide col dettaglio; in assenza di live usa lo snapshot della board.
+export function CityListItem({
+  row,
+  livePrice = null,
+  isLive = false,
+}: {
+  row: BoardRow;
+  /** prezzo live (orderbook mid) del bucket vincente, o null */
+  livePrice?: number | null;
+  isLive?: boolean;
+}) {
   const market = row.marketWinner;
   const oracle = row.oracleWinner;
-  const edge = row.edge;
+  // Prob di mercato del vincente: live se disponibile, altrimenti snapshot della board.
+  const marketProb = livePrice ?? market?.prob ?? null;
   const agree = market && oracle && market.label === oracle.label;
+  // Edge ricalcolato sul prezzo mostrato (coerente col valore live), solo se concordano.
+  const edge = agree && oracle && marketProb !== null ? edgePoints(oracle.prob, marketProb) : null;
+  const showLive = isLive && livePrice !== null;
+
+  // Mercato molto sicuro (> 85%): evidenzia con bordo ciano.
+  const highConfidence = marketProb !== null && marketProb > 0.85;
 
   return (
     <Link href={`/city/${row.cityId}`} className="block group">
-      <Card className="relative p-4 flex-row items-center gap-4 min-h-[104px] overflow-hidden transition-all group-hover:border-primary/40 group-hover:glow-primary">
+      <Card
+        className={cn(
+          "relative p-4 flex-row items-center gap-4 min-h-[104px] overflow-hidden transition-all",
+          highConfidence
+            ? "border-2 border-cyan-400/70 ring-1 ring-cyan-400/25 shadow-[0_0_24px_-6px] shadow-cyan-400/40"
+            : "group-hover:border-primary/40 group-hover:glow-primary",
+        )}
+      >
         {/* Immagine mercato Polymarket come sfondo sfumato */}
         {row.image ? (
           <div className="absolute inset-0 z-0 pointer-events-none">
@@ -78,7 +112,7 @@ export function CityListItem({ row }: { row: BoardRow }) {
                   {temp(row.observedMax, row.unit, 0)}
                 </span>
               ) : null}
-              <Countdown endDate={row.endDate} className="text-xs" />
+              <Countdown endDate={row.endDate} className="text-xs" hideBeyond24h />
               <Badge variant="outline" className="text-[10px]">
                 °{row.unit}
               </Badge>
@@ -90,10 +124,16 @@ export function CityListItem({ row }: { row: BoardRow }) {
           {/* Winning predictions */}
           <div className="mt-2.5 flex flex-wrap items-center gap-x-5 gap-y-1.5">
             <Prediction
-              icon={<Thermometer className="h-3.5 w-3.5 text-accent" />}
+              icon={
+                showLive ? (
+                  <Radio className="h-3.5 w-3.5 text-emerald-500 animate-pulse" />
+                ) : (
+                  <Thermometer className="h-3.5 w-3.5 text-accent" />
+                )
+              }
               caption="Market"
               label={market?.label ?? null}
-              prob={market?.prob ?? null}
+              prob={marketProb}
             />
             <Prediction
               icon={<Cloud className="h-3.5 w-3.5 text-primary" />}
@@ -101,6 +141,15 @@ export function CityListItem({ row }: { row: BoardRow }) {
               label={oracle?.label ?? null}
               prob={oracle?.prob ?? null}
             />
+            {row.liquidity !== null ? (
+              <span
+                className="flex items-center gap-1 text-xs text-muted-foreground tabular-nums"
+                title="Market liquidity"
+              >
+                <Coins className="h-3.5 w-3.5 text-amber-400" />
+                {usd(row.liquidity)}
+              </span>
+            ) : null}
             {edge !== null ? (
               isAligned(edge) ? (
                 <span
@@ -159,7 +208,7 @@ function Prediction({
       <span className="text-xs text-muted-foreground">{caption}</span>
       {label ? (
         <span className="text-base font-semibold tabular-nums">
-          {label} <span className="text-muted-foreground font-normal">{pct(prob, 0)}</span>
+          {label} <span className="text-muted-foreground font-normal">{pct(prob, 1)}</span>
         </span>
       ) : (
         <span className="text-base text-muted-foreground">—</span>

@@ -3,6 +3,7 @@
 //   (vedi buildDistribution.floorC) → l'oracolo si stringe a fine giornata.
 // - currentC: temperatura attuale (per la UI).
 import type { City } from "../cities";
+import { cacheInit } from "../fetch-cache";
 
 const FORECAST = "https://api.open-meteo.com/v1/forecast";
 
@@ -17,13 +18,14 @@ export async function fetchObservedTemps(
   city: City,
   date: string,
   signal?: AbortSignal,
+  fresh?: boolean,
 ): Promise<ObservedTemps> {
   const url =
     `${FORECAST}?latitude=${city.lat}&longitude=${city.lon}` +
     `&hourly=temperature_2m&current=temperature_2m&start_date=${date}&end_date=${date}` +
     `&timezone=${encodeURIComponent(city.timezone)}`;
   try {
-    const res = await fetch(url, { signal, next: { revalidate: 600 } });
+    const res = await fetch(url, { signal, ...cacheInit(600, fresh) });
     if (!res.ok) return { maxC: null, currentC: null };
     const data = (await res.json()) as {
       hourly?: { time?: string[]; temperature_2m?: (number | null)[] };

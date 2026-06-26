@@ -1,6 +1,7 @@
 // Met Norway (yr.no) - API gratuita senza chiave. Richiede uno User-Agent identificativo.
 // Aggiunge 1 member: la temp max prevista per il giorno target.
 import type { WeatherSource } from "./types";
+import { cacheInit } from "../../fetch-cache";
 
 const URL = "https://api.met.no/weatherapi/locationforecast/2.0/compact";
 // Met.no richiede uno User-Agent con contatto (vedi ToS). Override via env se serve.
@@ -21,7 +22,7 @@ export const metNorway: WeatherSource = {
     const res = await fetch(url, {
       signal: ctx.signal,
       headers: { "User-Agent": UA },
-      next: { revalidate: 600 },
+      ...cacheInit(600, ctx.fresh),
     });
     if (!res.ok) throw new Error(`met.no ${res.status}`);
     const data = (await res.json()) as {

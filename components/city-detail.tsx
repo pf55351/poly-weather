@@ -3,12 +3,22 @@
 import { useEffect, useMemo } from "react";
 import { useSetAtom } from "jotai";
 import Link from "next/link";
-import { ArrowLeft, CloudOff, RefreshCw, ThermometerSun, ArrowUp } from "lucide-react";
+import {
+  ArrowLeft,
+  CloudOff,
+  RefreshCw,
+  ThermometerSun,
+  ArrowUp,
+  Coins,
+  SunMedium,
+  MapPin,
+} from "lucide-react";
 import { liveStreamingAtom } from "@/lib/atoms";
 import { cn } from "@/lib/utils";
 import { useMarkets } from "@/hooks/use-markets";
 import { useOracle } from "@/hooks/use-oracle";
 import { useMarketStream } from "@/hooks/use-market-stream";
+import { useCash } from "@/hooks/use-cash";
 import { useSelectedDate } from "@/hooks/use-selected-date";
 import { ConnectionStatus } from "@/components/connection-status";
 import { DayTabs } from "@/components/day-tabs";
@@ -21,9 +31,9 @@ import { OraclePanel } from "@/components/oracle-panel";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { pct, edgePoints, temp } from "@/lib/format";
+import { pct, edgePoints, temp, usd } from "@/lib/format";
 import type { City } from "@/lib/cities";
-import type { TempMarketEvent } from "@/lib/polymarket";
+import { bucketMidPrice, type TempBucket, type TempMarketEvent } from "@/lib/polymarket";
 
 export function CityDetail({ cityId }: { cityId: string }) {
   // Giorno selezionato condiviso con la home (Oggi/Domani).
@@ -32,6 +42,7 @@ export function CityDetail({ cityId }: { cityId: string }) {
 
   const markets = useMarkets(cityId, date);
   const oracle = useOracle(cityId, date);
+  const cash = useCash();
 
   const event = markets.data?.event ?? null;
   const buckets = useMemo(() => event?.buckets ?? [], [event]);
@@ -39,7 +50,8 @@ export function CityDetail({ cityId }: { cityId: string }) {
   // Descrittore città (label/stazione/unità) dalla risposta API.
   const cityInfo = markets.data?.city;
   const label = cityInfo?.label ?? cityId.replace(/-/g, " ");
-  const station = cityInfo?.station;
+  // Stazione di risoluzione reale (aeroporto su cui si prevede e si risolve), se nota.
+  const station = oracle.data?.stationName ?? cityInfo?.station;
 
   // Ricostruisce un City minimale per le card (serve solo unit/station/label).
   const cityForCards: City = {
@@ -82,8 +94,8 @@ export function CityDetail({ cityId }: { cityId: string }) {
   // Refresh manuale del mercato (e oracolo) di questa città.
   const isRefreshing = markets.isFetching || oracle.isFetching;
   const refresh = () => {
-    markets.refetch();
-    oracle.refetch();
+    markets.refresh();
+    oracle.refresh();
   };
   const updatedAt = markets.dataUpdatedAt
     ? new Date(markets.dataUpdatedAt).toLocaleString("en-GB", {
@@ -108,7 +120,12 @@ export function CityDetail({ cityId }: { cityId: string }) {
           </Link>
           <span className="font-semibold">{label}</span>
           {station ? (
-            <span className="text-xs text-muted-foreground hidden sm:inline">· {station}</span>
+            <span
+              className="items-center gap-1 text-xs text-muted-foreground hidden sm:inline-flex"
+              title="Resolution station: temperature is taken (and the market resolves) here — the oracle forecasts at this exact location"
+            >
+              <MapPin className="h-3 w-3" /> {station}
+            </span>
           ) : null}
           <div className="ml-auto flex items-center gap-2">
             <TempConverterDialog className="h-7 w-7" />
@@ -158,6 +175,7 @@ export function CityDetail({ cityId }: { cityId: string }) {
               currentTemp={oracle.data?.currentTemp ?? null}
               observedMax={oracle.data?.observedMax ?? null}
               observedFromResolver={oracle.data?.observedFromResolver ?? false}
+              peakHour={oracle.data?.peakHour ?? null}
             />
 
             <div className="grid gap-6 lg:grid-cols-[1fr_minmax(360px,420px)]">
@@ -187,6 +205,7 @@ export function CityDetail({ cityId }: { cityId: string }) {
                         sourceCount={oracle.data?.sourceCount ?? 0}
                         stdev={oracle.data?.distribution.stats.stdev ?? Infinity}
                         dayFraction={localDayFraction(cityInfo?.timezone)}
+                        cash={cash}
                       />
                     ))}
                   </div>
@@ -228,6 +247,7 @@ function ComparisonHeader({
   currentTemp,
   observedMax,
   observedFromResolver,
+  peakHour,
 }: {
   image: string | null;
   event: TempMarketEvent | null;
@@ -243,6 +263,7 @@ function ComparisonHeader({
   currentTemp: number | null;
   observedMax: number | null;
   observedFromResolver: boolean;
+  peakHour: number | null;
 }) {
   const agree = marketMostLikely && oracleLabel && marketMostLikely.label === oracleLabel;
   // Come le card opzioni: Aligned → bordo verde marcato; Aligned + edge positivo → pulse.
@@ -269,16 +290,16 @@ function ComparisonHeader({
         </div>
       ) : null}
 
-      {/* Riga 1: previsioni Oracolo vs Mercato + esito */}
+      {/* Riga 1: Mercato vs Oracolo + esito (mercato per primo) */}
       <div className="relative z-10 flex flex-wrap items-center gap-x-5 gap-y-2">
-        <Side title="Oracle says" label={oracleLabel} prob={oracleProb} accent="text-primary" />
-        <span className="text-muted-foreground text-sm font-medium">vs</span>
         <Side
           title="Market says"
           label={marketMostLikely?.label ?? null}
           prob={marketMostLikely?.prob ?? null}
           accent="text-accent"
         />
+        <span className="text-muted-foreground text-sm font-medium">vs</span>
+        <Side title="Oracle says" label={oracleLabel} prob={oracleProb} accent="text-primary" />
         {marketMostLikely && oracleLabel ? (
           <Badge
             variant="outline"
@@ -326,6 +347,24 @@ function ComparisonHeader({
             </span>
           </>
         ) : null}
+        {peakHour !== null ? (
+          <>
+            <span className="text-muted-foreground/40">·</span>
+            <PeakInfo peakHour={peakHour} timezone={timezone} />
+          </>
+        ) : null}
+        {event?.liquidity ? (
+          <>
+            <span className="text-muted-foreground/40">·</span>
+            <span
+              className="flex items-center gap-1.5 font-medium tabular-nums text-amber-400"
+              title="Market liquidity"
+            >
+              <Coins className="h-3.5 w-3.5" />
+              Liq {usd(event.liquidity)}
+            </span>
+          </>
+        ) : null}
 
         <div className="ml-auto flex items-center gap-2.5 text-muted-foreground">
           {updatedAt ? (
@@ -365,9 +404,41 @@ function Side({
       <div className="text-sm text-muted-foreground">{title}</div>
       <div className="flex items-baseline gap-2">
         <span className={`text-2xl font-bold tabular-nums ${accent}`}>{label ?? "—"}</span>
-        <span className="text-base text-muted-foreground tabular-nums">{pct(prob, 0)}</span>
+        <span className="text-base text-muted-foreground tabular-nums">{pct(prob, 1)}</span>
       </div>
     </div>
+  );
+}
+
+// Ora del picco di temperatura previsto + stato (passato / tra Xh / adesso). Dopo il picco
+// il massimo del giorno è ormai "in cassa", quindi è il momento in cui fidarsi del dato osservato.
+function PeakInfo({ peakHour, timezone }: { peakHour: number; timezone?: string }) {
+  const frac = localDayFraction(timezone);
+  const nowH = frac !== null ? frac * 24 : null;
+  let state: string | null = null;
+  let passed = false;
+  if (nowH !== null) {
+    const d = nowH - peakHour;
+    if (d >= 0.5) {
+      state = "passed";
+      passed = true;
+    } else if (d <= -0.5) {
+      state = `in ${Math.round(-d)}h`;
+    } else {
+      state = "now";
+    }
+  }
+  return (
+    <span
+      className={cn(
+        "flex items-center gap-1.5 font-medium tabular-nums",
+        passed ? "text-muted-foreground" : "text-yellow-400",
+      )}
+      title="Expected time of today's temperature peak — after it, the daily max is essentially locked"
+    >
+      <SunMedium className="h-3.5 w-3.5" />
+      Peak ~{String(peakHour).padStart(2, "0")}:00{state ? ` · ${state}` : ""}
+    </span>
   );
 }
 
@@ -391,14 +462,14 @@ function localDayFraction(timezone?: string): number | null {
 }
 
 function mostLikelyBucketLabel(
-  buckets: { label: string; yesPrice: number; yesTokenId: string | null }[],
+  buckets: TempBucket[],
   livePrices: Record<string, number>,
 ): { label: string; prob: number } | null {
   if (buckets.length === 0) return null;
   let best = buckets[0];
   let bestProb = -1;
   for (const b of buckets) {
-    const p = b.yesTokenId ? (livePrices[b.yesTokenId] ?? b.yesPrice) : b.yesPrice;
+    const p = b.yesTokenId ? (livePrices[b.yesTokenId] ?? bucketMidPrice(b)) : bucketMidPrice(b);
     if (p > bestProb) {
       bestProb = p;
       best = b;

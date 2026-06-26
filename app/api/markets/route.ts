@@ -8,6 +8,7 @@ export const revalidate = 15;
 export async function GET(req: NextRequest) {
   const cityId = req.nextUrl.searchParams.get("city") ?? "";
   const dateStr = req.nextUrl.searchParams.get("date") ?? new Date().toISOString().slice(0, 10);
+  const fresh = req.nextUrl.searchParams.get("fresh") === "1";
   const date = new Date(`${dateStr}T12:00:00Z`);
 
   const city = await resolveCity(cityId, date);
@@ -24,7 +25,7 @@ export async function GET(req: NextRequest) {
   };
 
   try {
-    const event = await fetchTempEvent(city, date);
+    const event = await fetchTempEvent(city, date, undefined, fresh);
     // hasMarket è dinamico: vero se esiste un evento del giorno per questa città.
     return NextResponse.json({ cityId: city.id, hasMarket: Boolean(event), event, city: cityInfo });
   } catch (err) {

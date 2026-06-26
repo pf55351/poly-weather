@@ -18,6 +18,12 @@ export interface City {
   station: string;
   unit: TempUnit;
   timezone: string;
+  /**
+   * ID stazione api.weather.com nel formato "{ICAO}:9:{CC}" (es. "EHAM:9:NL"), cioè la
+   * STAZIONE AEROPORTUALE su cui Wunderground (e quindi il mercato) risolve. Quando presente,
+   * leggiamo da qui temperatura attuale e massimo osservato (valori reali, non interpolati).
+   */
+  resolverStation?: string;
 }
 
 /** slug stabile a partire dal nome Polymarket: "Hong Kong" -> "hong-kong", "NYC" -> "nyc". */
@@ -39,6 +45,7 @@ export const KNOWN_CITIES: Record<string, City> = {
     lat: 45.6306, // Malpensa LIMC (stazione di risoluzione verificata)
     lon: 8.7281,
     station: "Milano Malpensa (LIMC)",
+    resolverStation: "LIMC:9:IT",
     unit: "C",
     timezone: "Europe/Rome",
   },
@@ -49,6 +56,7 @@ export const KNOWN_CITIES: Record<string, City> = {
     lat: 48.9694, // Le Bourget LFPB
     lon: 2.4414,
     station: "Paris Le Bourget (LFPB)",
+    resolverStation: "LFPB:9:FR",
     unit: "C",
     timezone: "Europe/Paris",
   },
@@ -59,6 +67,7 @@ export const KNOWN_CITIES: Record<string, City> = {
     lat: 51.5048, // London City EGLC
     lon: 0.0495,
     station: "London City (EGLC)",
+    resolverStation: "EGLC:9:GB",
     unit: "C",
     timezone: "Europe/London",
   },
@@ -69,6 +78,7 @@ export const KNOWN_CITIES: Record<string, City> = {
     lat: 40.7769, // LaGuardia KLGA
     lon: -73.874,
     station: "LaGuardia (KLGA)",
+    resolverStation: "KLGA:9:US",
     unit: "F",
     timezone: "America/New_York",
   },
@@ -79,6 +89,7 @@ export const KNOWN_CITIES: Record<string, City> = {
     lat: 35.5494, // Haneda RJTT
     lon: 139.7798,
     station: "Haneda (RJTT)",
+    resolverStation: "RJTT:9:JP",
     unit: "C",
     timezone: "Asia/Tokyo",
   },

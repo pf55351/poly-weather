@@ -1,17 +1,19 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search, X, ThermometerSun, Info, ChevronDown, RefreshCw } from "lucide-react";
+import Link from "next/link";
+import { Search, X, ThermometerSun, Info, ChevronDown, RefreshCw, Wallet } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { CityListItem, CityListItemSkeleton } from "@/components/city-list-item";
 import { DayTabs } from "@/components/day-tabs";
 import { TempConverterDialog } from "@/components/temp-converter-dialog";
 import { useBoard } from "@/hooks/use-board";
+import { useMarketStream } from "@/hooks/use-market-stream";
 import { useSelectedDate } from "@/hooks/use-selected-date";
 import { todayISO } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 
-type SortMode = "edge" | "suggested";
+type SortMode = "edge" | "liquidity" | "suggested";
 
 /** Giorno (YYYY-MM-DD, fuso della città) a cui il mercato si riferisce: il close
  *  time è la mezzanotte locale successiva, quindi -1s ricade nel giorno del mercato. */
@@ -29,6 +31,14 @@ export default function Home() {
   const board = useBoard(date);
   const rawRows = useMemo(() => board.data?.cities ?? [], [board.data]);
 
+  // Stream live condiviso sui token dei bucket vincenti: un solo WebSocket per tutta la home,
+  // così i prezzi coincidono col dettaglio (entrambi orderbook mid in tempo reale).
+  const winnerTokens = useMemo(
+    () => rawRows.map((c) => c.marketWinner?.tokenId).filter((t): t is string => Boolean(t)),
+    [rawRows],
+  );
+  const { prices: livePrices, connected: liveConnected } = useMarketStream(winnerTokens);
+
   // Solo per oggi: nascondi i mercati già chiusi (close time passato) o che in realtà
   // riguardano un altro giorno (fallback su evento di domani).
   const allRows = useMemo(() => {
@@ -44,7 +54,6 @@ export default function Home() {
 
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortMode>("edge"); // edge di default
-  const sortByEdge = sort === "edge";
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -54,15 +63,21 @@ export default function Home() {
     );
   }, [allRows, query]);
 
-  // Edge: decrescente, città con edge prima, null (divergenza / no market) in coda.
-  const cities = sortByEdge
-    ? [...filtered].sort((a, b) => {
-        if (a.edge == null && b.edge == null) return 0;
-        if (a.edge == null) return 1;
-        if (b.edge == null) return -1;
-        return b.edge - a.edge;
-      })
-    : filtered;
+  // Helper: decrescente con i null in coda.
+  const descNullsLast = (a: number | null, b: number | null) => {
+    if (a == null && b == null) return 0;
+    if (a == null) return 1;
+    if (b == null) return -1;
+    return b - a;
+  };
+
+  const cities = useMemo(() => {
+    // Edge: città con edge prima, null (divergenza / no market) in coda.
+    if (sort === "edge") return [...filtered].sort((a, b) => descNullsLast(a.edge, b.edge));
+    // Liquidità: mercati più liquidi (prezzo più affidabile) prima.
+    if (sort === "liquidity") return [...filtered].sort((a, b) => descNullsLast(a.liquidity, b.liquidity));
+    return filtered; // suggested: ordine canonico (Italia prima, A-Z)
+  }, [filtered, sort]);
 
   const updatedAt = board.dataUpdatedAt
     ? new Date(board.dataUpdatedAt).toLocaleString("en-GB", {
@@ -123,8 +138,16 @@ export default function Home() {
               </span>
             ) : null}
             <TempConverterDialog />
+            <Link
+              href="/positions"
+              aria-label="Open positions"
+              title="Your open positions"
+              className="grid place-items-center h-8 w-8 rounded-lg border border-border/60 bg-card/50 text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
+            >
+              <Wallet className="h-4 w-4" />
+            </Link>
             <button
-              onClick={() => board.refetch()}
+              onClick={() => board.refresh()}
               disabled={board.isFetching}
               aria-label="Refresh"
               title="Refresh now"
@@ -182,8 +205,11 @@ export default function Home() {
             ) : null}
           </div>
           <div className="inline-flex rounded-xl border border-border/60 bg-card/50 p-1 shrink-0">
-            <SortButton active={sortByEdge} onClick={() => setSort("edge")}>
+            <SortButton active={sort === "edge"} onClick={() => setSort("edge")}>
               Edge
+            </SortButton>
+            <SortButton active={sort === "liquidity"} onClick={() => setSort("liquidity")}>
+              Liquidity
             </SortButton>
             <SortButton active={sort === "suggested"} onClick={() => setSort("suggested")}>
               Suggested
@@ -194,7 +220,14 @@ export default function Home() {
         <div className="flex flex-col gap-3">
           {board.isLoading
             ? Array.from({ length: 8 }).map((_, i) => <CityListItemSkeleton key={i} />)
-            : cities.map((c) => <CityListItem key={c.cityId} row={c} />)}
+            : cities.map((c) => (
+                <CityListItem
+                  key={c.cityId}
+                  row={c}
+                  livePrice={c.marketWinner?.tokenId ? (livePrices[c.marketWinner.tokenId] ?? null) : null}
+                  isLive={liveConnected}
+                />
+              ))}
         </div>
 
         {board.data && cities.length === 0 ? (
@@ -205,8 +238,8 @@ export default function Home() {
       </main>
 
       <footer className="border-t border-border/60 py-3 text-center text-xs text-muted-foreground">
-        Markets: Polymarket Gamma API · Oracle: Open-Meteo (ensemble + ~19 models, incl. Italy&apos;s
-        ARPAE), Met Norway, wttr.in, 7Timer
+        Markets: Polymarket Gamma API · Oracle: Open-Meteo (ensemble + ~20 models, incl. Italy&apos;s
+        ARPAE &amp; ECMWF-AIFS), NWS (USA), Met Norway, wttr.in, 7Timer
       </footer>
     </div>
   );

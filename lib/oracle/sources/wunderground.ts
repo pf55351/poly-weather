@@ -6,6 +6,7 @@
 // default è quella pubblica del sito (non ufficiale: può cambiare/limitare) — override con
 // WEATHERCOM_API_KEY se hai una chiave tua.
 import type { WeatherSource } from "./types";
+import { cacheInit } from "../../fetch-cache";
 
 const API = "https://api.weather.com/v3/wx/forecast/daily/5day";
 const KEY = process.env.WEATHERCOM_API_KEY ?? "e1f10a1e78da46f5b10a1e78da96f525";
@@ -20,7 +21,7 @@ export const wunderground: WeatherSource = {
   enabled: () => Boolean(KEY),
   async fetchMembers(ctx) {
     const url = `${API}?geocode=${ctx.lat},${ctx.lon}&units=m&language=en-US&format=json&apiKey=${KEY}`;
-    const res = await fetch(url, { signal: ctx.signal, next: { revalidate: 600 } });
+    const res = await fetch(url, { signal: ctx.signal, ...cacheInit(600, ctx.fresh) });
     if (!res.ok) throw new Error(`wunderground ${res.status}`);
     const data = (await res.json()) as {
       validTimeLocal?: string[];

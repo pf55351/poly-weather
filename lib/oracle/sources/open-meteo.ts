@@ -4,6 +4,7 @@
 //  2) Multi-model: la temp max prevista da 8-10 servizi meteo nazionali distinti.
 // Insieme rappresentano l'equivalente delle "~20 fonti affidabili".
 import type { SourceContext, WeatherSource } from "./types";
+import { cacheInit } from "../../fetch-cache";
 
 const ENSEMBLE = "https://ensemble-api.open-meteo.com/v1/ensemble";
 const FORECAST = "https://api.open-meteo.com/v1/forecast";
@@ -26,6 +27,7 @@ const ENSEMBLE_MODELS = [
 const FORECAST_MODELS = [
   // globali
   "ecmwf_ifs025",
+  "ecmwf_aifs025", // modello AI di ECMWF: metodologia indipendente dai modelli fisici
   "gfs_seamless",
   "icon_seamless",
   "gem_seamless",
@@ -77,7 +79,7 @@ export const openMeteoEnsemble: WeatherSource = {
   enabled: () => true,
   async fetchMembers(ctx) {
     const url = `${ENSEMBLE}?${commonParams(ctx)}&models=${ENSEMBLE_MODELS.join(",")}`;
-    const res = await fetch(url, { signal: ctx.signal, next: { revalidate: 600 } });
+    const res = await fetch(url, { signal: ctx.signal, ...cacheInit(600, ctx.fresh) });
     if (!res.ok) throw new Error(`ensemble ${res.status}`);
     const data = (await res.json()) as { daily?: Record<string, unknown> };
     const members = collectMaxValues(data.daily ?? {}, true);
@@ -92,7 +94,7 @@ export const openMeteoMultiModel: WeatherSource = {
   enabled: () => true,
   async fetchMembers(ctx) {
     const url = `${FORECAST}?${commonParams(ctx)}&models=${FORECAST_MODELS.join(",")}`;
-    const res = await fetch(url, { signal: ctx.signal, next: { revalidate: 600 } });
+    const res = await fetch(url, { signal: ctx.signal, ...cacheInit(600, ctx.fresh) });
     if (!res.ok) throw new Error(`forecast ${res.status}`);
     const data = (await res.json()) as { daily?: Record<string, unknown> };
     const members = collectMaxValues(data.daily ?? {}, false);

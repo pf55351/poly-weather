@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { discoverCities, resolveCity, type CityCard } from "@/lib/discover";
-import { fetchTempEvent } from "@/lib/polymarket";
+import { fetchTempEvent, bucketMidPrice, resolverStationFor } from "@/lib/polymarket";
 import { runOracle } from "@/lib/oracle";
 import { edgePoints } from "@/lib/format";
 import type { BucketDef } from "@/lib/oracle/distribution";
@@ -20,7 +20,7 @@ export interface BoardRow {
   hasMarket: boolean;
   /** quando il mercato chiude/risolve (ISO UTC) */
   endDate: string | null;
-  marketWinner: { label: string; prob: number } | null;
+  marketWinner: { label: string; prob: number; tokenId: string | null } | null;
   oracleWinner: { label: string; prob: number } | null;
   /** edge = P_oracolo − P_mercato (punti %) quando i due indicano lo stesso bucket, altrimenti null */
   edge: number | null;
@@ -29,6 +29,8 @@ export interface BoardRow {
   currentTemp: number | null;
   /** massimo registrato finora oggi (unità della città), dal risolutore quando disponibile */
   observedMax: number | null;
+  /** liquidità del mercato ($), per valutare l'affidabilità del prezzo */
+  liquidity: number | null;
 }
 
 export interface BoardResponse {
@@ -55,7 +57,12 @@ async function mapLimit<T, R>(
   return out;
 }
 
-async function computeRow(card: CityCard, dateStr: string, dateObj: Date): Promise<BoardRow> {
+async function computeRow(
+  card: CityCard,
+  dateStr: string,
+  dateObj: Date,
+  fresh: boolean,
+): Promise<BoardRow> {
   const base: BoardRow = {
     cityId: card.cityId,
     label: card.label,
@@ -73,6 +80,7 @@ async function computeRow(card: CityCard, dateStr: string, dateObj: Date): Promi
     sourceCount: 0,
     currentTemp: null,
     observedMax: null,
+    liquidity: null,
   };
 
   const city = await resolveCity(card.cityId, dateObj).catch(() => null);
@@ -80,18 +88,24 @@ async function computeRow(card: CityCard, dateStr: string, dateObj: Date): Promi
   base.label = city.label;
   base.timezone = city.timezone;
 
-  const event = await fetchTempEvent(city, dateObj).catch(() => null);
+  const event = await fetchTempEvent(city, dateObj, undefined, fresh).catch(() => null);
   const marketBuckets: BucketDef[] | undefined = event?.buckets.length
     ? event.buckets.map((b) => ({ label: b.label, low: b.low, high: b.high }))
     : undefined;
 
-  const oracle = await runOracle(city, dateStr, marketBuckets).catch(() => null);
+  // Stazione di risoluzione dal mercato (auto-config); fallback al valore in cities.ts.
+  const station = resolverStationFor(city.id, event?.resolutionSource) ?? city.resolverStation;
+  const cityR = station === city.resolverStation ? city : { ...city, resolverStation: station };
+
+  const oracle = await runOracle(cityR, dateStr, marketBuckets, undefined, fresh).catch(() => null);
 
   if (event && event.buckets.length) {
-    const top = event.buckets.reduce((a, b) => (b.yesPrice > a.yesPrice ? b : a));
+    // Prezzo come midpoint bid/ask: stessa grandezza dello stream live del dettaglio.
+    const top = event.buckets.reduce((a, b) => (bucketMidPrice(b) > bucketMidPrice(a) ? b : a));
     base.hasMarket = true;
     base.endDate = event.endDate;
-    base.marketWinner = { label: top.label, prob: top.yesPrice };
+    base.liquidity = event.liquidity;
+    base.marketWinner = { label: top.label, prob: bucketMidPrice(top), tokenId: top.yesTokenId };
   }
   const ml = oracle?.distribution.mostLikely ?? null;
   base.oracleWinner = ml ? { label: ml.label, prob: ml.probability } : null;
@@ -109,11 +123,12 @@ async function computeRow(card: CityCard, dateStr: string, dateObj: Date): Promi
 // Ordine canonico (Italia prima, A-Z); l'ordinamento per edge è lato client.
 export async function GET(req: NextRequest) {
   const dateStr = req.nextUrl.searchParams.get("date") ?? new Date().toISOString().slice(0, 10);
+  const fresh = req.nextUrl.searchParams.get("fresh") === "1";
   const dateObj = new Date(`${dateStr}T12:00:00Z`);
 
   try {
     const cards = await discoverCities(dateObj);
-    const cities = await mapLimit(cards, 6, (c) => computeRow(c, dateStr, dateObj));
+    const cities = await mapLimit(cards, 6, (c) => computeRow(c, dateStr, dateObj, fresh));
     return NextResponse.json({
       date: dateStr,
       generatedAt: new Date().toISOString(),

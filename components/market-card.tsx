@@ -4,9 +4,9 @@ import { TrendingDown, TrendingUp, Radio, ExternalLink, Check, Zap } from "lucid
 import { Card } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { EdgeBadge } from "./edge-badge";
-import { polymarketBucketUrl, type TempBucket, type TempMarketEvent } from "@/lib/polymarket";
+import { polymarketBucketUrl, bucketMidPrice, type TempBucket, type TempMarketEvent } from "@/lib/polymarket";
 import { pct, usd, edgePoints } from "@/lib/format";
-import { buySignal } from "@/lib/decision";
+import { tradeSignal } from "@/lib/decision";
 import type { TempUnit } from "@/lib/cities";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +21,7 @@ export function MarketCard({
   sourceCount,
   stdev,
   dayFraction,
+  cash = 0,
 }: {
   event: TempMarketEvent;
   bucket: TempBucket;
@@ -36,29 +37,41 @@ export function MarketCard({
   stdev: number;
   /** frazione 0..1 di giornata locale trascorsa, o null se ignota */
   dayFraction: number | null;
+  /** saldo cash ($) per dimensionare la puntata suggerita */
+  cash?: number;
 }) {
-  const marketProb = livePrice ?? bucket.yesPrice;
+  const marketProb = livePrice ?? bucketMidPrice(bucket);
   const change = bucket.oneDayPriceChange ?? 0;
   const edge = oracleProb !== null ? edgePoints(oracleProb, marketProb) : null;
   const orderUrl = polymarketBucketUrl(event.slug, bucket.slug);
 
-  // Segnale d'acquisto: si accende SOLO quando TUTTI i gate sono soddisfatti.
-  const signal = buySignal({
+  // Segnale operativo: si accende SOLO quando TUTTI i gate sono soddisfatti, su un lato.
+  const signal = tradeSignal({
     q: oracleProb,
     ask: bucket.bestAsk ?? marketProb,
+    bid: bucket.bestBid ?? marketProb,
     sourceCount,
     stdev,
     unit,
     volume24hr: bucket.volume24hr,
+    liquidity: bucket.liquidity,
     dayFraction,
   });
 
-  // Bordo verde: segnale d'acquisto (lampeggia) > match oracolo/mercato.
-  const cardCls = signal.buy
-    ? "border-2 border-emerald-500 pulse-edge"
-    : isMatch
-      ? "border-2 border-emerald-500 ring-2 ring-emerald-500/30 shadow-[0_8px_30px_-10px] shadow-emerald-500/50"
-      : "hover:border-primary/40 hover:glow-primary";
+  // Bordo: il segnale operativo LAMPEGGIA per enfatizzare quando comprare (verde=Yes, rosso=No)
+  // e vince sul match. Corrispondenza oracolo/mercato → bordo viola lampeggiante.
+  const cardCls =
+    signal.side === "YES"
+      ? "border-2 border-emerald-500 pulse-edge"
+      : signal.side === "NO"
+        ? "border-2 border-red-500 pulse-edge-red"
+        : isMatch
+          ? "border-2 border-primary pulse-match"
+          : "hover:border-primary/40 hover:glow-primary";
+
+  // Puntata suggerita: ½-Kelly (cap 10%) del cash, in $ e %.
+  const stakeUsd =
+    signal.stakeFraction !== null && cash > 0 ? cash * signal.stakeFraction : null;
 
   return (
     <Card className={cn("relative p-4 gap-3 transition-all", cardCls)}>
@@ -73,20 +86,29 @@ export function MarketCard({
 
       <div className="relative z-10 flex items-start justify-between gap-2 pointer-events-none">
         <span className="text-lg font-bold leading-tight">{bucket.label}</span>
-        {signal.buy ? (
+        {signal.side ? (
           <div className="shrink-0 pointer-events-auto">
             <Tooltip>
               <TooltipTrigger
                 render={
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white shadow-[0_0_12px_2px] shadow-emerald-500/60 animate-pulse cursor-help" />
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white animate-pulse cursor-help",
+                      signal.side === "YES"
+                        ? "bg-emerald-500 shadow-[0_0_12px_2px] shadow-emerald-500/60"
+                        : "bg-red-500 shadow-[0_0_12px_2px] shadow-red-500/60",
+                    )}
+                  />
                 }
-                aria-label="Buy signal"
+                aria-label={`Buy ${signal.side} signal`}
               >
                 <Zap className="h-3 w-3 fill-current" />
-                Buy {signal.edgePts !== null ? `+${signal.edgePts.toFixed(0)}pt` : ""}
+                Buy {signal.side} {signal.edgePts !== null ? `+${signal.edgePts.toFixed(0)}pt` : ""}
               </TooltipTrigger>
               <TooltipContent className="max-w-[240px]">
-                <p className="mb-1.5 font-semibold">All buy conditions met:</p>
+                <p className="mb-1.5 font-semibold">
+                  All conditions met to buy «{signal.side}»:
+                </p>
                 <ul className="space-y-0.5">
                   {signal.checks.map((c) => (
                     <li key={c.label} className="flex items-center gap-1.5">
@@ -96,7 +118,10 @@ export function MarketCard({
                   ))}
                 </ul>
                 <p className="mt-1.5 text-[11px] text-muted-foreground">
-                  Oracle beats the price with margin in the reliable zone. Not financial advice.
+                  {signal.side === "YES"
+                    ? "Oracle beats the price with margin in the reliable zone."
+                    : "Market overprices «Yes»; oracle favors «No» with margin."}{" "}
+                  Not financial advice.
                 </p>
               </TooltipContent>
             </Tooltip>
@@ -135,15 +160,33 @@ export function MarketCard({
       </div>
 
       <div className="relative z-10 flex items-center justify-between border-t pt-2 pointer-events-none">
-        <div className="text-xs">
-          <span className="text-muted-foreground">oracle </span>
-          <span className="font-medium tabular-nums">{pct(oracleProb, 1)}</span>
+        <div className="flex items-baseline gap-1">
+          <span className="text-xs text-muted-foreground">oracle</span>
+          <span className="text-base font-semibold tabular-nums">{pct(oracleProb, 1)}</span>
         </div>
         {edge !== null ? <EdgeBadge points={edge} /> : null}
       </div>
 
+      {/* Suggerimento di puntata: solo quando il segnale è acceso */}
+      {signal.side && signal.stakeFraction ? (
+        <div
+          className={cn(
+            "relative z-10 flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs pointer-events-none",
+            signal.side === "YES" ? "bg-emerald-500/10 text-emerald-300" : "bg-red-500/10 text-red-300",
+          )}
+        >
+          <span className="font-semibold">Buy {signal.side} · ½-Kelly</span>
+          <span className="tabular-nums font-bold">
+            {stakeUsd !== null ? `${usd(stakeUsd)} · ` : ""}
+            {pct(signal.stakeFraction, 1)} of cash
+          </span>
+        </div>
+      ) : null}
+
       <div className="relative z-10 flex justify-between text-[11px] text-muted-foreground tabular-nums pointer-events-none">
-        <span>Vol 24h {usd(bucket.volume24hr)}</span>
+        <span>
+          Vol 24h {usd(bucket.volume24hr)} · Liq {usd(bucket.liquidity)}
+        </span>
         <span className="flex items-center gap-1">
           Polymarket <ExternalLink className="h-3 w-3" />
         </span>
